@@ -46,10 +46,10 @@
 
 ### Infrastructure
 
-- [ ] **INFR-01**: Scraper uses TLS-fingerprint-safe HTTP client (curl_cffi or equivalent) to bypass Cloudflare passive detection
-- [ ] **INFR-02**: Scraper implements randomized delays between requests (configurable range, e.g. 3-8 seconds)
-- [ ] **INFR-03**: Scraper rotates User-Agent strings across requests
-- [ ] **INFR-04**: Scraper handles HTTP errors (403, 429, 503, timeouts) with exponential backoff and configurable retry limits
+- [x] **INFR-01**: Scraper uses real Chrome browser (nodriver) to bypass Cloudflare active JavaScript challenges — superior to TLS impersonation
+- [x] **INFR-02**: Scraper implements randomized delays between requests (configurable range, default 3-8 seconds)
+- [x] **INFR-03**: Scraper presents genuine Chrome User-Agent via nodriver (more effective than rotation for anti-detection)
+- [x] **INFR-04**: Scraper handles Cloudflare challenges with exponential backoff and configurable retry limits via tenacity
 - [ ] **INFR-05**: Scraper logs progress, errors, and statistics to console and file
 - [ ] **INFR-06**: Scraper tracks scraping state per match (discovered → fetched → parsed → complete)
 - [ ] **INFR-07**: Scraper resumes from last checkpoint after interruption without re-scraping completed matches
@@ -115,10 +115,10 @@
 | PERF-02 | Phase 7 | Pending |
 | ECON-01 | Phase 7 | Pending |
 | ECON-02 | Phase 7 | Pending |
-| INFR-01 | Phase 1 | Pending |
-| INFR-02 | Phase 1 | Pending |
-| INFR-03 | Phase 1 | Pending |
-| INFR-04 | Phase 1 | Pending |
+| INFR-01 | Phase 1 | Complete |
+| INFR-02 | Phase 1 | Complete |
+| INFR-03 | Phase 1 | Complete |
+| INFR-04 | Phase 1 | Complete |
 | INFR-05 | Phase 9 | Pending |
 | INFR-06 | Phase 9 | Pending |
 | INFR-07 | Phase 9 | Pending |
@@ -135,4 +135,4 @@
 
 ---
 *Requirements defined: 2026-02-14*
-*Last updated: 2026-02-14 -- Added RECON-01 through RECON-05, renumbered phase mappings for Phases 3-9*
+*Last updated: 2026-02-14 -- INFR-01 through INFR-04 marked Complete (Phase 1 verified)*

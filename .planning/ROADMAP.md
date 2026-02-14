@@ -12,7 +12,7 @@ This roadmap delivers a complete HLTV match data scraper in 9 phases, following 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: HTTP Client and Anti-Detection** - Reliable, ban-resistant HTTP transport for HLTV
+- [x] **Phase 1: HTTP Client and Anti-Detection** - Reliable, ban-resistant HTTP transport for HLTV
 - [ ] **Phase 2: Storage Foundation** - Database schema and raw HTML archival system
 - [ ] **Phase 3: Page Reconnaissance** - Fetch, inspect, and document every HLTV page type to map available data before building parsers
 - [ ] **Phase 4: Match Discovery** - Paginate HLTV results pages to collect all CS2-era match IDs
@@ -37,9 +37,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md -- Project scaffolding, config, exceptions, rate limiter, and UA rotator
-- [ ] 01-02-PLAN.md -- Cloudflare detection, retry logic, and HLTVClient assembly
-- [ ] 01-03-PLAN.md -- Integration test against live HLTV (all 5 page types, 20-page sequence)
+- [x] 01-01-PLAN.md -- Project scaffolding, config, exceptions, rate limiter, and UA rotator
+- [x] 01-02-PLAN.md -- Cloudflare detection, retry logic, and HLTVClient assembly
+- [x] 01-03-PLAN.md -- Integration test against live HLTV (all 5 page types, 20-page sequence)
 
 ### Phase 2: Storage Foundation
 **Goal**: All scraped data has a persistent home -- relational database for structured data, filesystem for raw HTML
@@ -196,7 +196,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. HTTP Client and Anti-Detection | 0/3 | Planning complete | - |
+| 1. HTTP Client and Anti-Detection | 3/3 | Complete | 2026-02-14 |
 | 2. Storage Foundation | 0/3 | Not started | - |
 | 3. Page Reconnaissance | 0/7 | Not started | - |
 | 4. Match Discovery | 0/3 | Not started | - |
@@ -208,4 +208,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 
 ---
 *Roadmap created: 2026-02-14*
-*Last updated: 2026-02-14 -- Phase 1 planned: 3 plans in 3 waves*
+*Last updated: 2026-02-14 -- Phase 1 complete: all 3 plans verified, nodriver replaces curl_cffi*
