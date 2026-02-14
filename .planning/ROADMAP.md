@@ -50,12 +50,11 @@ Plans:
   2. Raw HTML responses are saved to disk organized by page type and ID before any parsing occurs
   3. Database schema supports UPSERT semantics so re-processing a match does not create duplicates
   4. Raw HTML files can be read back and parsed offline without any network requests
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: SQLite database schema design and creation (all tables, indexes, constraints)
-- [ ] 02-02: Raw HTML storage layer (directory structure, save/load by page type and ID)
-- [ ] 02-03: Database access layer (CRUD operations, UPSERT logic)
+- [ ] 02-01-PLAN.md -- Database schema migration, connection manager, and raw HTML storage layer
+- [ ] 02-02-PLAN.md -- Repository UPSERT layer and comprehensive tests for all storage components
 
 ### Phase 3: Page Reconnaissance
 **Goal**: Every HLTV page type the scraper will parse is fetched, inspected, and documented -- CSS selectors, data fields, structural variations, and edge cases are all mapped out before any parser code is written
@@ -197,7 +196,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. HTTP Client and Anti-Detection | 3/3 | Complete | 2026-02-14 |
-| 2. Storage Foundation | 0/3 | Not started | - |
+| 2. Storage Foundation | 0/2 | Not started | - |
 | 3. Page Reconnaissance | 0/7 | Not started | - |
 | 4. Match Discovery | 0/3 | Not started | - |
 | 5. Match Overview Extraction | 0/5 | Not started | - |
@@ -208,4 +207,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 
 ---
 *Roadmap created: 2026-02-14*
-*Last updated: 2026-02-14 -- Phase 1 complete: all 3 plans verified, nodriver replaces curl_cffi*
+*Last updated: 2026-02-15 -- Phase 2 planned: 2 plans in 2 waves*
