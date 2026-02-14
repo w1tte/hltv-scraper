@@ -57,8 +57,8 @@
 
 ### Storage
 
-- [ ] **STOR-01**: SQLite database with relational schema: matches, maps, player_stats, round_history, economy tables
-- [ ] **STOR-02**: Store raw HTML to disk before parsing, enabling parser fixes without re-fetching
+- [x] **STOR-01**: SQLite database with relational schema: matches, maps, player_stats, round_history, economy tables
+- [x] **STOR-02**: Store raw HTML to disk before parsing, enabling parser fixes without re-fetching
 - [ ] **STOR-03**: Pydantic models validate every scraped record before database insertion
 - [ ] **STOR-04**: Cross-field validation: player counts, round totals matching scores, rating bounds
 
@@ -123,8 +123,8 @@
 | INFR-06 | Phase 9 | Pending |
 | INFR-07 | Phase 9 | Pending |
 | INFR-08 | Phase 9 | Pending |
-| STOR-01 | Phase 2 | Pending |
-| STOR-02 | Phase 2 | Pending |
+| STOR-01 | Phase 2 | Complete |
+| STOR-02 | Phase 2 | Complete |
 | STOR-03 | Phase 8 | Pending |
 | STOR-04 | Phase 8 | Pending |
 
@@ -135,4 +135,4 @@
 
 ---
 *Requirements defined: 2026-02-14*
-*Last updated: 2026-02-14 -- INFR-01 through INFR-04 marked Complete (Phase 1 verified)*
+*Last updated: 2026-02-15 -- STOR-01, STOR-02 marked Complete (Phase 2 verified)*

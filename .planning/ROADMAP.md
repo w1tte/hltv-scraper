@@ -13,7 +13,7 @@ This roadmap delivers a complete HLTV match data scraper in 9 phases, following 
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: HTTP Client and Anti-Detection** - Reliable, ban-resistant HTTP transport for HLTV
-- [ ] **Phase 2: Storage Foundation** - Database schema and raw HTML archival system
+- [x] **Phase 2: Storage Foundation** - Database schema and raw HTML archival system
 - [ ] **Phase 3: Page Reconnaissance** - Fetch, inspect, and document every HLTV page type to map available data before building parsers
 - [ ] **Phase 4: Match Discovery** - Paginate HLTV results pages to collect all CS2-era match IDs
 - [ ] **Phase 5: Match Overview Extraction** - Parse match detail pages for teams, scores, vetoes, rosters
@@ -53,8 +53,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- Database schema migration, connection manager, and raw HTML storage layer
-- [ ] 02-02-PLAN.md -- Repository UPSERT layer and comprehensive tests for all storage components
+- [x] 02-01-PLAN.md -- Database schema migration, connection manager, and raw HTML storage layer
+- [x] 02-02-PLAN.md -- Repository UPSERT layer and comprehensive tests for all storage components
 
 ### Phase 3: Page Reconnaissance
 **Goal**: Every HLTV page type the scraper will parse is fetched, inspected, and documented -- CSS selectors, data fields, structural variations, and edge cases are all mapped out before any parser code is written
@@ -196,7 +196,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. HTTP Client and Anti-Detection | 3/3 | Complete | 2026-02-14 |
-| 2. Storage Foundation | 0/2 | Not started | - |
+| 2. Storage Foundation | 2/2 | Complete | 2026-02-15 |
 | 3. Page Reconnaissance | 0/7 | Not started | - |
 | 4. Match Discovery | 0/3 | Not started | - |
 | 5. Match Overview Extraction | 0/5 | Not started | - |
@@ -207,4 +207,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 
 ---
 *Roadmap created: 2026-02-14*
-*Last updated: 2026-02-15 -- Phase 2 planned: 2 plans in 2 waves*
+*Last updated: 2026-02-15 -- Phase 2 complete: 2/2 plans verified, 9/9 must-haves pass*
