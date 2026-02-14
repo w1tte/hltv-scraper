@@ -39,17 +39,17 @@ HLTV_SEQUENCE_URLS = [
     ("match_overview_4", "https://www.hltv.org/matches/2376514/mouz-vs-vitality-blast-premier-spring-final-2025"),
     ("match_overview_5", "https://www.hltv.org/matches/2376097/faze-vs-spirit-pgl-astana-2025"),
     ("map_overview_1", "https://www.hltv.org/stats/matches/mapstatsid/178889/faze-vs-natus-vincere"),
-    ("map_overview_2", "https://www.hltv.org/stats/matches/mapstatsid/178890/faze-vs-natus-vincere"),
+    ("map_economy_2", "https://www.hltv.org/stats/matches/economy/mapstatsid/177536/spirit-vs-the-mongolz"),
     ("map_overview_3", "https://www.hltv.org/stats/matches/mapstatsid/177536/spirit-vs-the-mongolz"),
     ("map_overview_4", "https://www.hltv.org/stats/matches/mapstatsid/175014/natus-vincere-vs-spirit"),
     ("map_overview_5", "https://www.hltv.org/stats/matches/mapstatsid/178891/mouz-vs-vitality"),
     ("map_performance_1", "https://www.hltv.org/stats/matches/performance/mapstatsid/178889/faze-vs-natus-vincere"),
-    ("map_performance_2", "https://www.hltv.org/stats/matches/performance/mapstatsid/178890/faze-vs-natus-vincere"),
+    ("map_economy_3", "https://www.hltv.org/stats/matches/economy/mapstatsid/175014/natus-vincere-vs-spirit"),
     ("map_performance_3", "https://www.hltv.org/stats/matches/performance/mapstatsid/177536/spirit-vs-the-mongolz"),
     ("map_performance_4", "https://www.hltv.org/stats/matches/performance/mapstatsid/175014/natus-vincere-vs-spirit"),
     ("map_performance_5", "https://www.hltv.org/stats/matches/performance/mapstatsid/178891/mouz-vs-vitality"),
     ("map_economy_1", "https://www.hltv.org/stats/matches/economy/mapstatsid/178889/faze-vs-natus-vincere"),
-    ("map_economy_2", "https://www.hltv.org/stats/matches/economy/mapstatsid/178890/faze-vs-natus-vincere"),
+    ("map_economy_4", "https://www.hltv.org/stats/matches/economy/mapstatsid/178891/mouz-vs-vitality"),
 ]
 
 

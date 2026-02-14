@@ -128,8 +128,13 @@ class HLTVClient:
                         url=url,
                     )
 
-            # Extract full HTML
+            # Extract full HTML — retry extraction if page hasn't loaded yet
             html = await page.evaluate("document.documentElement.outerHTML")
+
+            if not html or len(html) < 10000:
+                # Page may still be loading; wait and retry extraction
+                await asyncio.sleep(self._config.page_load_wait)
+                html = await page.evaluate("document.documentElement.outerHTML")
 
             if not html or len(html) < 10000:
                 raise HLTVFetchError(
