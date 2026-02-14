@@ -37,3 +37,7 @@ class ScraperConfig:
 
     # HLTV base URL (single-site scraper)
     base_url: str = HLTV_BASE_URL
+
+    # Persistent data storage
+    data_dir: str = "data"
+    db_path: str = "data/hltv.db"
