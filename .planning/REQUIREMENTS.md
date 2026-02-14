@@ -11,6 +11,14 @@
 - [ ] **DISC-02**: Scraper filters results to only CS2-era matches (post September 2023)
 - [ ] **DISC-03**: Scraper extracts match ID, teams, scores, event name, star rating, and date from results listing
 
+### Page Reconnaissance
+
+- [ ] **RECON-01**: Sample HTML for every target page type (results listing, match overview, map overview, map performance, map economy) is fetched and archived to disk
+- [ ] **RECON-02**: CSS selectors and HTML structure paths for every extractable data field are documented per page type
+- [ ] **RECON-03**: Structural differences across match formats (BO1 vs BO3/BO5, forfeits/walkovers, overtime) are documented with examples
+- [ ] **RECON-04**: Rating version differences (2.0/2.1 vs 3.0) are documented with concrete HTML examples showing changed fields
+- [ ] **RECON-05**: Cross-page data overlap is mapped: which fields appear on multiple page types vs. which are unique to one page type
+
 ### Match Overview
 
 - [ ] **MTCH-01**: Scraper extracts match metadata from overview page: teams, final score, format (BO1/BO3/BO5), LAN/online, date/time
@@ -86,40 +94,45 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DISC-01 | — | Pending |
-| DISC-02 | — | Pending |
-| DISC-03 | — | Pending |
-| MTCH-01 | — | Pending |
-| MTCH-02 | — | Pending |
-| MTCH-03 | — | Pending |
-| MTCH-04 | — | Pending |
-| MTCH-05 | — | Pending |
-| MTCH-06 | — | Pending |
-| MAPS-01 | — | Pending |
-| MAPS-02 | — | Pending |
-| MAPS-03 | — | Pending |
-| PERF-01 | — | Pending |
-| PERF-02 | — | Pending |
-| ECON-01 | — | Pending |
-| ECON-02 | — | Pending |
-| INFR-01 | — | Pending |
-| INFR-02 | — | Pending |
-| INFR-03 | — | Pending |
-| INFR-04 | — | Pending |
-| INFR-05 | — | Pending |
-| INFR-06 | — | Pending |
-| INFR-07 | — | Pending |
-| INFR-08 | — | Pending |
-| STOR-01 | — | Pending |
-| STOR-02 | — | Pending |
-| STOR-03 | — | Pending |
-| STOR-04 | — | Pending |
+| DISC-01 | Phase 4 | Pending |
+| DISC-02 | Phase 4 | Pending |
+| DISC-03 | Phase 4 | Pending |
+| RECON-01 | Phase 3 | Pending |
+| RECON-02 | Phase 3 | Pending |
+| RECON-03 | Phase 3 | Pending |
+| RECON-04 | Phase 3 | Pending |
+| RECON-05 | Phase 3 | Pending |
+| MTCH-01 | Phase 5 | Pending |
+| MTCH-02 | Phase 5 | Pending |
+| MTCH-03 | Phase 5 | Pending |
+| MTCH-04 | Phase 5 | Pending |
+| MTCH-05 | Phase 5 | Pending |
+| MTCH-06 | Phase 5 | Pending |
+| MAPS-01 | Phase 6 | Pending |
+| MAPS-02 | Phase 6 | Pending |
+| MAPS-03 | Phase 6 | Pending |
+| PERF-01 | Phase 7 | Pending |
+| PERF-02 | Phase 7 | Pending |
+| ECON-01 | Phase 7 | Pending |
+| ECON-02 | Phase 7 | Pending |
+| INFR-01 | Phase 1 | Pending |
+| INFR-02 | Phase 1 | Pending |
+| INFR-03 | Phase 1 | Pending |
+| INFR-04 | Phase 1 | Pending |
+| INFR-05 | Phase 9 | Pending |
+| INFR-06 | Phase 9 | Pending |
+| INFR-07 | Phase 9 | Pending |
+| INFR-08 | Phase 9 | Pending |
+| STOR-01 | Phase 2 | Pending |
+| STOR-02 | Phase 2 | Pending |
+| STOR-03 | Phase 8 | Pending |
+| STOR-04 | Phase 8 | Pending |
 
 **Coverage:**
-- v1 requirements: 28 total
-- Mapped to phases: 0
-- Unmapped: 28 ⚠️
+- v1 requirements: 33 total
+- Mapped to phases: 33
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-14*
-*Last updated: 2026-02-14 after initial definition*
+*Last updated: 2026-02-14 -- Added RECON-01 through RECON-05, renumbered phase mappings for Phases 3-9*
