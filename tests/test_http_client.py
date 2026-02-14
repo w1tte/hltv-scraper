@@ -1,77 +1,95 @@
-"""Unit tests for HLTVClient with mocked HTTP responses.
+"""Unit tests for HLTVClient with mocked nodriver browser.
 
-All tests use MockResponse objects and patched session.get / time.sleep
-to avoid real HTTP requests and real delays.
+All tests mock nodriver.start() and page.evaluate() to avoid
+launching a real browser or making real HTTP requests.
 """
 
-from unittest.mock import MagicMock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from scraper.config import ScraperConfig
-from scraper.exceptions import (
-    CloudflareChallenge,
-    HLTVFetchError,
-    PageNotFound,
-    RateLimited,
-)
-from scraper.http_client import HLTVClient, _check_response
+from scraper.exceptions import CloudflareChallenge, HLTVFetchError
+from scraper.http_client import HLTVClient
 
 
-class MockResponse:
-    """Fake curl_cffi response for unit testing."""
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-    def __init__(
-        self,
-        status_code: int = 200,
-        text: str = "<html>HLTV</html>",
-        headers: dict | None = None,
-        url: str = "https://www.hltv.org/test",
-    ):
-        self.status_code = status_code
-        self.text = text
-        self.headers = headers or {"content-type": "text/html"}
-        self.url = url
-
-
-def _make_client(**overrides) -> HLTVClient:
-    """Create an HLTVClient with fast settings for testing.
-
-    Patches time.sleep so rate limiter doesn't actually wait.
-    Uses max_retries=2 for fast tests.
-    """
-    defaults = {"max_retries": 2, "min_delay": 0.0, "max_delay": 0.0}
+def _make_config(**overrides) -> ScraperConfig:
+    """Create a config with fast settings for testing."""
+    defaults = {
+        "max_retries": 2,
+        "min_delay": 0.0,
+        "max_delay": 0.0,
+        "page_load_wait": 0.0,
+        "challenge_wait": 0.0,
+    }
     defaults.update(overrides)
-    config = ScraperConfig(**defaults)
-    return HLTVClient(config)
+    return ScraperConfig(**defaults)
+
+
+def _mock_page(title: str = "Match Page | HLTV.org", html: str = "<html>" + "x" * 20000 + "</html>"):
+    """Create a mock nodriver page with evaluate() returning title/html."""
+    page = AsyncMock()
+
+    async def evaluate_side_effect(js: str):
+        if "document.title" in js:
+            return title
+        if "document.documentElement.outerHTML" in js:
+            return html
+        return ""
+
+    page.evaluate = AsyncMock(side_effect=evaluate_side_effect)
+    return page
+
+
+def _mock_browser(page=None):
+    """Create a mock nodriver browser that returns a mock page on get()."""
+    if page is None:
+        page = _mock_page()
+    browser = AsyncMock()
+    browser.get = AsyncMock(return_value=page)
+    browser.stop = MagicMock()
+    return browser
 
 
 # ---------------------------------------------------------------------------
 # Test 1: Successful fetch returns HTML
 # ---------------------------------------------------------------------------
+@pytest.mark.asyncio
 @patch("time.sleep")
-@patch("curl_cffi.requests.Session.get")
-def test_fetch_success_returns_html(mock_get, mock_sleep):
-    mock_get.return_value = MockResponse(text="<html>Match Page</html>")
+@patch("nodriver.start")
+async def test_fetch_success_returns_html(mock_start, mock_sleep):
+    html_content = "<html>" + "x" * 20000 + "</html>"
+    page = _mock_page(html=html_content)
+    browser = _mock_browser(page)
+    mock_start.return_value = browser
 
-    client = _make_client()
-    result = client.fetch("https://www.hltv.org/matches/12345/test")
-    client.close()
+    client = HLTVClient(_make_config())
+    await client.start()
+    result = await client.fetch("https://www.hltv.org/matches/12345/test")
+    await client.close()
 
-    assert result == "<html>Match Page</html>"
+    assert result == html_content
 
 
 # ---------------------------------------------------------------------------
 # Test 2: Successful fetch increments counters
 # ---------------------------------------------------------------------------
+@pytest.mark.asyncio
 @patch("time.sleep")
-@patch("curl_cffi.requests.Session.get")
-def test_fetch_success_increments_counters(mock_get, mock_sleep):
-    mock_get.return_value = MockResponse()
+@patch("nodriver.start")
+async def test_fetch_success_increments_counters(mock_start, mock_sleep):
+    browser = _mock_browser()
+    mock_start.return_value = browser
 
-    client = _make_client()
-    client.fetch("https://www.hltv.org/test")
-    client.close()
+    client = HLTVClient(_make_config())
+    await client.start()
+    await client.fetch("https://www.hltv.org/test")
+    await client.close()
 
     stats = client.stats
     assert stats["requests"] == 1
@@ -80,18 +98,21 @@ def test_fetch_success_increments_counters(mock_get, mock_sleep):
 
 
 # ---------------------------------------------------------------------------
-# Test 3: fetch() calls rate_limiter.wait() before HTTP request
+# Test 3: fetch() calls rate_limiter.wait() before navigation
 # ---------------------------------------------------------------------------
+@pytest.mark.asyncio
 @patch("time.sleep")
-@patch("curl_cffi.requests.Session.get")
-def test_fetch_calls_rate_limiter_wait(mock_get, mock_sleep):
-    mock_get.return_value = MockResponse()
+@patch("nodriver.start")
+async def test_fetch_calls_rate_limiter_wait(mock_start, mock_sleep):
+    browser = _mock_browser()
+    mock_start.return_value = browser
 
-    client = _make_client()
+    client = HLTVClient(_make_config())
+    await client.start()
     client.rate_limiter.wait = MagicMock(return_value=0.0)
 
-    client.fetch("https://www.hltv.org/test")
-    client.close()
+    await client.fetch("https://www.hltv.org/test")
+    await client.close()
 
     client.rate_limiter.wait.assert_called_once()
 
@@ -99,143 +120,191 @@ def test_fetch_calls_rate_limiter_wait(mock_get, mock_sleep):
 # ---------------------------------------------------------------------------
 # Test 4: fetch() calls rate_limiter.recover() on success
 # ---------------------------------------------------------------------------
+@pytest.mark.asyncio
 @patch("time.sleep")
-@patch("curl_cffi.requests.Session.get")
-def test_fetch_recovers_on_success(mock_get, mock_sleep):
-    mock_get.return_value = MockResponse()
+@patch("nodriver.start")
+async def test_fetch_recovers_on_success(mock_start, mock_sleep):
+    browser = _mock_browser()
+    mock_start.return_value = browser
 
-    client = _make_client()
+    client = HLTVClient(_make_config())
+    await client.start()
     client.rate_limiter.wait = MagicMock(return_value=0.0)
     client.rate_limiter.recover = MagicMock()
 
-    client.fetch("https://www.hltv.org/test")
-    client.close()
+    await client.fetch("https://www.hltv.org/test")
+    await client.close()
 
     client.rate_limiter.recover.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
-# Test 5: cf-mitigated: challenge header raises CloudflareChallenge
+# Test 5: Challenge title raises CloudflareChallenge
 # ---------------------------------------------------------------------------
-def test_cloudflare_challenge_cf_mitigated_header():
-    response = MockResponse(
-        status_code=200,
-        headers={"content-type": "text/html", "cf-mitigated": "challenge"},
-    )
-    with pytest.raises(CloudflareChallenge):
-        _check_response(response)
-
-
-# ---------------------------------------------------------------------------
-# Test 6: 403 with Cloudflare HTML signatures raises CloudflareChallenge
-# ---------------------------------------------------------------------------
-def test_cloudflare_challenge_html_signatures():
-    response = MockResponse(
-        status_code=403,
-        text='<html><div class="cf-chl-widget">Just a moment...</div></html>',
-        headers={"content-type": "text/html"},
-    )
-    with pytest.raises(CloudflareChallenge):
-        _check_response(response)
-
-
-# ---------------------------------------------------------------------------
-# Test 7: HTTP 429 raises RateLimited
-# ---------------------------------------------------------------------------
-def test_rate_limited_429():
-    response = MockResponse(
-        status_code=429,
-        headers={"content-type": "text/html", "Retry-After": "30"},
-    )
-    with pytest.raises(RateLimited) as exc_info:
-        _check_response(response)
-    assert "Retry-After: 30" in str(exc_info.value)
-
-
-# ---------------------------------------------------------------------------
-# Test 8: HTTP 404 raises PageNotFound (NOT retried)
-# ---------------------------------------------------------------------------
-def test_page_not_found_404():
-    response = MockResponse(status_code=404)
-    with pytest.raises(PageNotFound):
-        _check_response(response)
-
-
-# ---------------------------------------------------------------------------
-# Test 9: CloudflareChallenge triggers rate_limiter.backoff()
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
 @patch("time.sleep")
-@patch("curl_cffi.requests.Session.get")
-def test_fetch_backoff_on_challenge(mock_get, mock_sleep):
-    mock_get.return_value = MockResponse(
-        status_code=200,
-        headers={"content-type": "text/html", "cf-mitigated": "challenge"},
-    )
+@patch("nodriver.start")
+async def test_cloudflare_challenge_detected_by_title(mock_start, mock_sleep):
+    page = _mock_page(title="Just a moment...")
+    browser = _mock_browser(page)
+    mock_start.return_value = browser
 
-    client = _make_client(max_retries=1)
+    client = HLTVClient(_make_config(max_retries=1))
+    await client.start()
+
+    with pytest.raises(CloudflareChallenge):
+        await client.fetch("https://www.hltv.org/test")
+
+    await client.close()
+    assert client.stats["challenges"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# Test 6: Challenge triggers rate_limiter.backoff()
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("time.sleep")
+@patch("nodriver.start")
+async def test_fetch_backoff_on_challenge(mock_start, mock_sleep):
+    page = _mock_page(title="Just a moment...")
+    browser = _mock_browser(page)
+    mock_start.return_value = browser
+
+    client = HLTVClient(_make_config(max_retries=1))
+    await client.start()
     client.rate_limiter.wait = MagicMock(return_value=0.0)
     client.rate_limiter.backoff = MagicMock()
 
     with pytest.raises(CloudflareChallenge):
-        client.fetch("https://www.hltv.org/test")
-    client.close()
+        await client.fetch("https://www.hltv.org/test")
 
+    await client.close()
     client.rate_limiter.backoff.assert_called()
 
 
 # ---------------------------------------------------------------------------
-# Test 10: Tenacity retries on CloudflareChallenge then succeeds
+# Test 7: Tenacity retries on challenge then succeeds
 # ---------------------------------------------------------------------------
+@pytest.mark.asyncio
 @patch("time.sleep")
-@patch("curl_cffi.requests.Session.get")
-def test_retry_on_cloudflare_challenge(mock_get, mock_sleep):
-    challenge_response = MockResponse(
-        status_code=200,
-        headers={"content-type": "text/html", "cf-mitigated": "challenge"},
-    )
-    success_response = MockResponse(text="<html>Real Page</html>")
+@patch("nodriver.start")
+async def test_retry_on_challenge_then_success(mock_start, mock_sleep):
+    call_count = 0
+    ok_html = "<html>" + "x" * 20000 + "</html>"
 
-    mock_get.side_effect = [challenge_response, success_response]
+    async def evaluate_switching(js):
+        nonlocal call_count
+        if "document.title" in js:
+            call_count += 1
+            # First 2 calls return challenge title, then OK
+            if call_count <= 2:
+                return "Just a moment..."
+            return "Match Page | HLTV.org"
+        if "document.documentElement.outerHTML" in js:
+            return ok_html
+        return ""
 
-    client = _make_client(max_retries=3)
-    client.rate_limiter.wait = MagicMock(return_value=0.0)
+    page = AsyncMock()
+    page.evaluate = AsyncMock(side_effect=evaluate_switching)
+    browser = _mock_browser(page)
+    mock_start.return_value = browser
 
-    result = client.fetch("https://www.hltv.org/test")
-    client.close()
+    client = HLTVClient(_make_config(max_retries=3))
+    await client.start()
 
-    assert result == "<html>Real Page</html>"
-    assert mock_get.call_count == 2
+    result = await client.fetch("https://www.hltv.org/test")
+    await client.close()
+
+    assert result == ok_html
 
 
 # ---------------------------------------------------------------------------
-# Test 11: PageNotFound is NOT retried (only 1 call to session.get)
+# Test 8: Too-short response raises HLTVFetchError
 # ---------------------------------------------------------------------------
+@pytest.mark.asyncio
 @patch("time.sleep")
-@patch("curl_cffi.requests.Session.get")
-def test_no_retry_on_page_not_found(mock_get, mock_sleep):
-    mock_get.return_value = MockResponse(status_code=404)
+@patch("nodriver.start")
+async def test_short_response_raises_error(mock_start, mock_sleep):
+    page = _mock_page(html="<html>tiny</html>")
+    browser = _mock_browser(page)
+    mock_start.return_value = browser
 
-    client = _make_client(max_retries=3)
-    client.rate_limiter.wait = MagicMock(return_value=0.0)
+    client = HLTVClient(_make_config(max_retries=1))
+    await client.start()
 
-    with pytest.raises(PageNotFound):
-        client.fetch("https://www.hltv.org/missing")
-    client.close()
+    with pytest.raises(HLTVFetchError, match="too short"):
+        await client.fetch("https://www.hltv.org/test")
 
-    assert mock_get.call_count == 1
+    await client.close()
 
 
 # ---------------------------------------------------------------------------
-# Test 12: Context manager closes session
+# Test 9: fetch() without start() raises HLTVFetchError
 # ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_fetch_without_start_raises_error():
+    client = HLTVClient(_make_config())
+
+    with pytest.raises(HLTVFetchError, match="Browser not started"):
+        await client.fetch("https://www.hltv.org/test")
+
+
+# ---------------------------------------------------------------------------
+# Test 10: Async context manager starts and stops browser
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
 @patch("time.sleep")
-def test_context_manager(mock_sleep):
-    with _make_client() as client:
-        assert client.session is not None
-        session_ref = client.session
+@patch("nodriver.start")
+async def test_async_context_manager(mock_start, mock_sleep):
+    browser = _mock_browser()
+    mock_start.return_value = browser
 
-    # After exiting context, session should be closed
-    # curl_cffi Session.close() is called; we verify via mock
-    # Since we can't easily check internal state, verify __exit__ ran
-    # by checking that close() doesn't raise
-    assert session_ref is not None
+    async with HLTVClient(_make_config()) as client:
+        assert client._browser is not None
+        await client.fetch("https://www.hltv.org/test")
+
+    # After exit, browser should be stopped
+    browser.stop.assert_called_once()
+    assert client._browser is None
+
+
+# ---------------------------------------------------------------------------
+# Test 11: close() is safe to call multiple times
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("nodriver.start")
+async def test_close_idempotent(mock_start):
+    browser = _mock_browser()
+    mock_start.return_value = browser
+
+    client = HLTVClient(_make_config())
+    await client.start()
+    await client.close()
+    await client.close()  # should not raise
+
+    assert client._browser is None
+
+
+# ---------------------------------------------------------------------------
+# Test 12: stats reports correct success rate
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+@patch("time.sleep")
+@patch("nodriver.start")
+async def test_stats_accuracy(mock_start, mock_sleep):
+    browser = _mock_browser()
+    mock_start.return_value = browser
+
+    client = HLTVClient(_make_config())
+    await client.start()
+
+    await client.fetch("https://www.hltv.org/test1")
+    await client.fetch("https://www.hltv.org/test2")
+    await client.fetch("https://www.hltv.org/test3")
+    await client.close()
+
+    stats = client.stats
+    assert stats["requests"] == 3
+    assert stats["successes"] == 3
+    assert stats["success_rate"] == 1.0
+    assert stats["current_delay"] >= 0

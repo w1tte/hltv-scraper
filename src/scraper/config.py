@@ -10,11 +10,8 @@ class ScraperConfig:
     """Configuration for the HLTV scraper.
 
     All timing values are in seconds. These defaults are tuned for
-    HLTV's Cloudflare protection level based on community research.
+    HLTV's Cloudflare protection level based on empirical testing.
     """
-
-    # curl_cffi browser impersonation target
-    impersonate_target: str = "chrome136"
 
     # Rate limiting: delay between requests
     min_delay: float = 3.0
@@ -32,8 +29,11 @@ class ScraperConfig:
     # tenacity stop_after_attempt
     max_retries: int = 5
 
-    # HTTP request timeout (seconds)
-    timeout: int = 30
+    # Seconds to wait after navigation for page to load
+    page_load_wait: float = 4.0
+
+    # Seconds of extra wait when a challenge is detected (before rechecking)
+    challenge_wait: float = 5.0
 
     # HLTV base URL (single-site scraper)
     base_url: str = HLTV_BASE_URL
