@@ -13,11 +13,11 @@
 
 ### Page Reconnaissance
 
-- [ ] **RECON-01**: Sample HTML for every target page type (results listing, match overview, map overview, map performance, map economy) is fetched and archived to disk
-- [ ] **RECON-02**: CSS selectors and HTML structure paths for every extractable data field are documented per page type
-- [ ] **RECON-03**: Structural differences across match formats (BO1 vs BO3/BO5, forfeits/walkovers, overtime) are documented with examples
-- [ ] **RECON-04**: Rating version differences (2.0/2.1 vs 3.0) are documented with concrete HTML examples showing changed fields
-- [ ] **RECON-05**: Cross-page data overlap is mapped: which fields appear on multiple page types vs. which are unique to one page type
+- [x] **RECON-01**: Sample HTML for every target page type (results listing, match overview, map overview, map performance, map economy) is fetched and archived to disk
+- [x] **RECON-02**: CSS selectors and HTML structure paths for every extractable data field are documented per page type
+- [x] **RECON-03**: Structural differences across match formats (BO1 vs BO3/BO5, forfeits/walkovers, overtime) are documented with examples
+- [x] **RECON-04**: Rating version differences (2.0/2.1 vs 3.0) are documented with concrete HTML examples showing changed fields
+- [x] **RECON-05**: Cross-page data overlap is mapped: which fields appear on multiple page types vs. which are unique to one page type
 
 ### Match Overview
 
@@ -97,11 +97,11 @@
 | DISC-01 | Phase 4 | Pending |
 | DISC-02 | Phase 4 | Pending |
 | DISC-03 | Phase 4 | Pending |
-| RECON-01 | Phase 3 | Pending |
-| RECON-02 | Phase 3 | Pending |
-| RECON-03 | Phase 3 | Pending |
-| RECON-04 | Phase 3 | Pending |
-| RECON-05 | Phase 3 | Pending |
+| RECON-01 | Phase 3 | Complete |
+| RECON-02 | Phase 3 | Complete |
+| RECON-03 | Phase 3 | Complete |
+| RECON-04 | Phase 3 | Complete |
+| RECON-05 | Phase 3 | Complete |
 | MTCH-01 | Phase 5 | Pending |
 | MTCH-02 | Phase 5 | Pending |
 | MTCH-03 | Phase 5 | Pending |
