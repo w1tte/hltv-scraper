@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 6 (Map Stats Extraction) in progress. Plan 06-02 (repository extension) delivered. Next: remaining 06 plans.
+**Current focus:** Phase 6 (Map Stats Extraction) in progress. Plans 06-01 and 06-02 delivered. Next: 06-03 (orchestrator).
 
 ## Current Position
 
 Phase: 6 of 9 (Map Stats Extraction)
-Plan: 1 of 3 in current phase (06-02 complete)
+Plan: 2 of 3 in current phase (06-01, 06-02 complete)
 Status: In progress
-Last activity: 2026-02-15 -- Completed 06-02-PLAN.md (map stats repository extension)
+Last activity: 2026-02-16 -- Completed 06-01-PLAN.md (map stats parser)
 
-Progress: [████------] 47% (19/40 plans across all phases)
+Progress: [█████-----] 50% (20/40 plans across all phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 19
+- Total plans completed: 20
 - Average duration: ~9 min
-- Total execution time: ~2.6 hours
+- Total execution time: ~2.8 hours
 
 **By Phase:**
 
@@ -32,11 +32,11 @@ Progress: [████------] 47% (19/40 plans across all phases)
 | 03-page-reconnaissance | 7/7 | ~82 min | ~12 min |
 | 04-match-discovery | 3/3 | ~9 min | ~3 min |
 | 05-match-overview | 3/3 | ~20 min | ~7 min |
-| 06-map-stats-extraction | 1/3 | ~2 min | ~2 min |
+| 06-map-stats-extraction | 2/3 | ~10 min | ~5 min |
 
 **Recent Trend:**
-- Last 5 plans: 06-02 (2 min), 05-03 (9 min), 05-02 (8 min), 05-01 (3 min), 04-03 (3 min)
-- Repository extension plan was fast -- pure DB methods with no HTML parsing or external dependencies
+- Last 5 plans: 06-01 (8 min), 06-02 (2 min), 05-03 (9 min), 05-02 (8 min), 05-01 (3 min)
+- Parser plan took ~8 min: fast implementation thanks to thorough Phase 3 recon selector map
 
 *Updated after each plan completion*
 
@@ -116,6 +116,9 @@ Recent decisions affecting current work:
 - [06-02]: get_pending_map_stats uses NOT EXISTS subquery against player_stats to find unprocessed maps (same pattern as pending matches)
 - [06-02]: upsert_map_stats_complete writes player_stats + round_history atomically in single transaction
 - [06-02]: map_stats_batch_size config defaults to 10 (maps per batch, not matches)
+- [06-01]: Short CSS selectors (td.st-kills not td.st-kills.traditional-data) work for both Rating 2.0 and 3.0 -- select_one picks first match
+- [06-01]: Rating 2.0 pages have all traditional-data columns except st-roundSwing; round_swing=None is the only 2.0-specific handling needed
+- [06-01]: Compound stats "14(9)" parsed via regex not span navigation -- simpler and consistent across all samples
 
 ### Pending Todos
 
@@ -130,6 +133,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-15
-Stopped at: Completed 06-02-PLAN.md (map stats repository extension) -- Phase 6 in progress
+Last session: 2026-02-16
+Stopped at: Completed 06-01-PLAN.md (map stats parser) -- Phase 6 in progress (06-03 remaining)
 Resume file: None
