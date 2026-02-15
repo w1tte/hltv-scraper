@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 5 (Match Overview Extraction) in progress. Plan 2 of 3 complete (match overview parser). Next: Plan 3 (overview orchestrator).
+**Current focus:** Phase 5 (Match Overview Extraction) COMPLETE. All 3 plans delivered. Next: Phase 6 (Map Stats Extraction).
 
 ## Current Position
 
 Phase: 5 of 9 (Match Overview Extraction)
-Plan: 2 of 3 in current phase
-Status: In progress
-Last activity: 2026-02-15 -- Completed 05-02-PLAN.md (match overview parser)
+Plan: 3 of 3 in current phase
+Status: Phase complete
+Last activity: 2026-02-15 -- Completed 05-03-PLAN.md (overview orchestrator)
 
-Progress: [████------] 42% (17/40 plans across all phases)
+Progress: [████------] 45% (18/40 plans across all phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 17
+- Total plans completed: 18
 - Average duration: ~9 min
-- Total execution time: ~2.4 hours
+- Total execution time: ~2.6 hours
 
 **By Phase:**
 
@@ -31,11 +31,11 @@ Progress: [████------] 42% (17/40 plans across all phases)
 | 02-storage-foundation | 2/2 | ~6 min | ~3 min |
 | 03-page-reconnaissance | 7/7 | ~82 min | ~12 min |
 | 04-match-discovery | 3/3 | ~9 min | ~3 min |
-| 05-match-overview | 2/3 | ~11 min | ~5.5 min |
+| 05-match-overview | 3/3 | ~20 min | ~7 min |
 
 **Recent Trend:**
-- Last 5 plans: 05-02 (8 min), 05-01 (3 min), 04-03 (3 min), 04-01 (4 min), 04-02 (2 min)
-- Parser plan took longer (~8 min) due to test suite running 9 gzipped HTML samples through BeautifulSoup
+- Last 5 plans: 05-03 (9 min), 05-02 (8 min), 05-01 (3 min), 04-03 (3 min), 04-01 (4 min)
+- Orchestrator plan took ~9 min due to full pipeline integration tests with real HTML samples
 
 *Updated after each plan completion*
 
@@ -109,6 +109,9 @@ Recent decisions affecting current work:
 - [05-02]: Scores stored as raw .won/.lost values (BO1 = round scores like 16/14, BO3/BO5 = maps-won like 2/1; best_of disambiguates)
 - [05-02]: Half scores regulation-only; OT spans (no ct/t class) excluded from ct/t columns
 - [05-02]: Unplayed detection via .optional child element inside .mapholder (not a class on mapholder)
+- [05-03]: Fetch failures discard entire batch; queue entries remain pending for retry
+- [05-03]: Parse/persist failures are per-match; failed matches get status='failed', others continue
+- [05-03]: Date conversion from unix ms to ISO 8601 YYYY-MM-DD for DB storage
 
 ### Pending Todos
 
@@ -124,5 +127,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 05-02-PLAN.md (match overview parser)
+Stopped at: Completed 05-03-PLAN.md (overview orchestrator) -- Phase 5 complete
 Resume file: None
