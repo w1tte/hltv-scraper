@@ -9,7 +9,7 @@
 
 - [ ] **DISC-01**: Scraper navigates HLTV results pages with offset-based pagination to discover all CS2-era match IDs
 - [ ] **DISC-02**: Scraper filters results to only CS2-era matches (post September 2023)
-- [ ] **DISC-03**: Scraper extracts match ID, teams, scores, event name, star rating, and date from results listing
+- [ ] **DISC-03**: Scraper extracts match ID, team names, team IDs (from hyperlinks), scores, event name, star rating, and date from results listing
 
 ### Page Reconnaissance
 
@@ -21,11 +21,11 @@
 
 ### Match Overview
 
-- [ ] **MTCH-01**: Scraper extracts match metadata from overview page: teams, final score, format (BO1/BO3/BO5), LAN/online, date/time
+- [ ] **MTCH-01**: Scraper extracts match metadata from overview page: team names, team IDs (from hyperlinks), final score, format (BO1/BO3/BO5), LAN/online, date/time
 - [ ] **MTCH-02**: Scraper extracts event info: event ID, event name
 - [ ] **MTCH-03**: Scraper extracts full map veto sequence with team attribution (pick/ban/decider)
 - [ ] **MTCH-04**: Scraper extracts per-map scores including CT/T half breakdowns
-- [ ] **MTCH-05**: Scraper extracts player rosters for each team with player IDs
+- [ ] **MTCH-05**: Scraper extracts player rosters for each team with player IDs and player names (from hyperlinks)
 - [ ] **MTCH-06**: Scraper follows links to per-map stats pages for each played map
 
 ### Map Stats — Overview
@@ -135,4 +135,4 @@
 
 ---
 *Requirements defined: 2026-02-14*
-*Last updated: 2026-02-15 -- STOR-01, STOR-02 marked Complete (Phase 2 verified)*
+*Last updated: 2026-02-15 -- HLTV entity IDs (team_id, player_id) explicitly added to DISC-03, MTCH-01, MTCH-05*
