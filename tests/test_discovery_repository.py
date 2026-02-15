@@ -201,3 +201,68 @@ class TestGetQueueEntry:
     def test_get_queue_entry_not_found(self, repo):
         """Returns None for non-existent match_id."""
         assert repo.get_queue_entry(99999) is None
+
+
+# ---------------------------------------------------------------------------
+# Queue management (Phase 5 orchestrator methods)
+# ---------------------------------------------------------------------------
+
+class TestQueueManagement:
+    def test_get_pending_matches_returns_pending_only(self, repo):
+        """Insert 3 pending, mark 1 scraped, get_pending returns only 2."""
+        batch = [
+            make_queue_entry(match_id=1),
+            make_queue_entry(match_id=2),
+            make_queue_entry(match_id=3),
+        ]
+        repo.upsert_batch(batch)
+        # Mark match 1 as scraped using the raw SQL
+        repo.conn.execute(
+            "UPDATE scrape_queue SET status = 'scraped' WHERE match_id = 1"
+        )
+        repo.conn.commit()
+
+        pending = repo.get_pending_matches(limit=10)
+        assert len(pending) == 2
+        assert all(p["status"] == "pending" for p in pending)
+        assert {p["match_id"] for p in pending} == {2, 3}
+
+    def test_get_pending_matches_respects_limit(self, repo):
+        """Insert 5 pending, limit=2 returns exactly 2."""
+        batch = [make_queue_entry(match_id=i) for i in range(1, 6)]
+        repo.upsert_batch(batch)
+
+        pending = repo.get_pending_matches(limit=2)
+        assert len(pending) == 2
+
+    def test_get_pending_matches_ordered_by_match_id(self, repo):
+        """Insert with match_ids [300, 100, 200], returned in order [100, 200, 300]."""
+        batch = [
+            make_queue_entry(match_id=300),
+            make_queue_entry(match_id=100),
+            make_queue_entry(match_id=200),
+        ]
+        repo.upsert_batch(batch)
+
+        pending = repo.get_pending_matches(limit=10)
+        assert [p["match_id"] for p in pending] == [100, 200, 300]
+
+    def test_update_status_to_scraped(self, repo):
+        """update_status transitions entry from pending to scraped."""
+        repo.upsert_batch([make_queue_entry(match_id=1)])
+        repo.update_status(1, "scraped")
+
+        entry = repo.get_queue_entry(1)
+        assert entry["status"] == "scraped"
+
+    def test_update_status_to_failed(self, repo):
+        """update_status transitions entry from pending to failed."""
+        repo.upsert_batch([make_queue_entry(match_id=1)])
+        repo.update_status(1, "failed")
+
+        entry = repo.get_queue_entry(1)
+        assert entry["status"] == "failed"
+
+    def test_get_pending_matches_empty(self, repo):
+        """Returns empty list when no pending entries exist."""
+        assert repo.get_pending_matches(limit=10) == []
