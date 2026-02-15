@@ -629,3 +629,175 @@ class TestMatchPlayers:
     def test_get_match_players_empty_match(self, repo):
         """get_match_players returns empty list for nonexistent match."""
         assert repo.get_match_players(9999) == []
+
+
+# ---------------------------------------------------------------------------
+# get_pending_map_stats
+# ---------------------------------------------------------------------------
+
+class TestGetPendingMapStats:
+    """Tests for the get_pending_map_stats query method."""
+
+    def _seed_match_and_maps(self, repo):
+        """Seed a match with 3 maps: two with mapstatsid, one without."""
+        repo.upsert_match(make_match_data(match_id=99999))
+        repo.upsert_map(make_map_data(
+            match_id=99999, map_number=1, mapstatsid=111111, map_name="Inferno",
+        ))
+        repo.upsert_map(make_map_data(
+            match_id=99999, map_number=2, mapstatsid=222222, map_name="Mirage",
+        ))
+        # Unplayed/forfeit map with mapstatsid=None
+        repo.upsert_map(make_map_data(
+            match_id=99999, map_number=3, mapstatsid=None, map_name="Default",
+        ))
+
+    def test_returns_maps_without_player_stats(self, repo):
+        """Maps with mapstatsid but no player_stats appear as pending."""
+        self._seed_match_and_maps(repo)
+        pending = repo.get_pending_map_stats(limit=100)
+        assert len(pending) == 2
+        assert pending[0]["match_id"] == 99999
+        assert pending[0]["map_number"] == 1
+        assert pending[0]["mapstatsid"] == 111111
+        assert pending[1]["map_number"] == 2
+        assert pending[1]["mapstatsid"] == 222222
+
+    def test_excludes_maps_with_player_stats(self, repo):
+        """After inserting player_stats for map 1, only map 2 is pending."""
+        self._seed_match_and_maps(repo)
+        repo.upsert_player_stats(make_player_stats_data(
+            match_id=99999, map_number=1, player_id=1001,
+        ))
+        pending = repo.get_pending_map_stats(limit=100)
+        assert len(pending) == 1
+        assert pending[0]["map_number"] == 2
+
+    def test_excludes_null_mapstatsid(self, repo):
+        """Maps with mapstatsid=None (forfeit/unplayed) never appear."""
+        self._seed_match_and_maps(repo)
+        pending = repo.get_pending_map_stats(limit=100)
+        mapstatsids = [p["mapstatsid"] for p in pending]
+        assert None not in mapstatsids
+        # Only the 2 maps with mapstatsid should be returned
+        assert len(pending) == 2
+
+    def test_respects_limit(self, repo):
+        """With 2 pending maps, limit=1 returns only 1."""
+        self._seed_match_and_maps(repo)
+        pending = repo.get_pending_map_stats(limit=1)
+        assert len(pending) == 1
+        assert pending[0]["map_number"] == 1  # ordered by match_id, map_number
+
+    def test_returns_empty_when_all_processed(self, repo):
+        """After inserting player_stats for all maps, returns empty list."""
+        self._seed_match_and_maps(repo)
+        for map_num in [1, 2]:
+            repo.upsert_player_stats(make_player_stats_data(
+                match_id=99999, map_number=map_num, player_id=1001,
+            ))
+        pending = repo.get_pending_map_stats(limit=100)
+        assert pending == []
+
+    def test_ordered_by_match_and_map(self, repo):
+        """Maps from multiple matches are ordered by match_id ASC then map_number ASC."""
+        # Create two matches with maps
+        repo.upsert_match(make_match_data(match_id=50000))
+        repo.upsert_map(make_map_data(match_id=50000, map_number=2, mapstatsid=500002))
+        repo.upsert_map(make_map_data(match_id=50000, map_number=1, mapstatsid=500001))
+
+        repo.upsert_match(make_match_data(match_id=40000))
+        repo.upsert_map(make_map_data(match_id=40000, map_number=1, mapstatsid=400001))
+
+        pending = repo.get_pending_map_stats(limit=100)
+        result = [(p["match_id"], p["map_number"]) for p in pending]
+        assert result == [
+            (40000, 1),
+            (50000, 1),
+            (50000, 2),
+        ]
+
+
+# ---------------------------------------------------------------------------
+# upsert_map_stats_complete
+# ---------------------------------------------------------------------------
+
+class TestUpsertMapStatsComplete:
+    """Tests for the upsert_map_stats_complete atomic write method."""
+
+    def _seed_match_and_map(self, repo):
+        """Seed a match with one map for player_stats/round_history inserts."""
+        repo.upsert_match(make_match_data(match_id=99999))
+        repo.upsert_map(make_map_data(
+            match_id=99999, map_number=1, mapstatsid=111111,
+        ))
+
+    def test_upserts_player_stats_and_rounds_atomically(self, repo):
+        """All player_stats and round_history rows are written in one transaction."""
+        self._seed_match_and_map(repo)
+        stats = [
+            make_player_stats_data(
+                match_id=99999, map_number=1, player_id=1000 + i,
+                player_name=f"Player{i}", team_id=4608 if i <= 3 else 5995,
+            )
+            for i in range(1, 6)
+        ]
+        rounds = [
+            make_round_data(match_id=99999, map_number=1, round_number=r)
+            for r in range(1, 25)
+        ]
+
+        repo.upsert_map_stats_complete(stats, rounds)
+
+        # Verify player_stats
+        ps = repo.get_player_stats(99999, 1)
+        assert len(ps) == 5
+
+        # Verify round_history
+        rh_count = repo.conn.execute(
+            "SELECT COUNT(*) FROM round_history WHERE match_id = 99999 AND map_number = 1"
+        ).fetchone()[0]
+        assert rh_count == 24
+
+    def test_rollback_on_round_error(self, repo):
+        """If a round insert fails, player_stats are also rolled back."""
+        self._seed_match_and_map(repo)
+        stats = [
+            make_player_stats_data(
+                match_id=99999, map_number=1, player_id=1001,
+            )
+        ]
+        # Bad round data: missing required fields -> error during execute
+        bad_rounds = [{"match_id": 99999, "map_number": 1}]  # missing round_number etc.
+
+        with pytest.raises(Exception):
+            repo.upsert_map_stats_complete(stats, bad_rounds)
+
+        # Neither player_stats nor rounds should have been persisted
+        ps = repo.get_player_stats(99999, 1)
+        assert ps == []
+        rh_count = repo.conn.execute(
+            "SELECT COUNT(*) FROM round_history WHERE match_id = 99999 AND map_number = 1"
+        ).fetchone()[0]
+        assert rh_count == 0
+
+    def test_map_no_longer_pending_after_upsert(self, repo):
+        """After upsert_map_stats_complete, get_pending_map_stats excludes the map."""
+        self._seed_match_and_map(repo)
+        # Verify it's initially pending
+        pending_before = repo.get_pending_map_stats(limit=100)
+        assert len(pending_before) == 1
+
+        stats = [
+            make_player_stats_data(
+                match_id=99999, map_number=1, player_id=1001,
+            )
+        ]
+        rounds = [
+            make_round_data(match_id=99999, map_number=1, round_number=1)
+        ]
+        repo.upsert_map_stats_complete(stats, rounds)
+
+        # Now it should not be pending
+        pending_after = repo.get_pending_map_stats(limit=100)
+        assert pending_after == []
