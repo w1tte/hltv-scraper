@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 3 in progress. Plans 03-01, 03-02, 03-03, 03-04, 03-06 complete. Next: 03-05 (performance page) then 03-07 (edge cases).
+**Current focus:** Phase 3 in progress. Plans 03-01 through 03-06 complete. Next: 03-07 (edge cases + cross-page synthesis).
 
 ## Current Position
 
 Phase: 3 of 9 (Page Reconnaissance) -- IN PROGRESS
-Plan: 5 of 7 in current phase (03-01, 03-02, 03-03, 03-04, 03-06 complete)
+Plan: 6 of 7 in current phase (03-01 through 03-06 complete)
 Status: In progress
-Last activity: 2026-02-15 -- Completed 03-03-PLAN.md (match overview selector map)
+Last activity: 2026-02-15 -- Completed 03-05-PLAN.md (performance page selector map)
 
-Progress: [████████░░] 80%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
+- Total plans completed: 11
 - Average duration: ~11 min
-- Total execution time: ~1.8 hours
+- Total execution time: ~2.0 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [████████░░] 80%
 |-------|-------|-------|----------|
 | 01-http-client | 3/3 | ~45 min | ~15 min |
 | 02-storage-foundation | 2/2 | ~6 min | ~3 min |
-| 03-page-reconnaissance | 5/7 | ~63 min | ~13 min |
+| 03-page-reconnaissance | 6/7 | ~77 min | ~13 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-01 (17 min), 03-02 (7 min), 03-06 (12 min), 03-04 (13 min), 03-03 (14 min)
-- 03-03 was match overview page selector discovery with programmatic verification against 9 samples
+- Last 5 plans: 03-02 (7 min), 03-06 (12 min), 03-04 (13 min), 03-03 (14 min), 03-05 (14 min)
+- 03-05 was performance page selector discovery with Rating 2.0/3.0 dual-format FusionChart analysis
 
 *Updated after each plan completion*
 
@@ -84,6 +84,11 @@ Recent decisions affecting current work:
 - [03-03]: Full forfeit matches lack .won/.lost divs entirely; countdown shows "Match deleted"
 - [03-03]: Half-score spans use class="ct"/"t" for side indication; overtime spans lack side classes
 - [03-03]: No map pick indicator on map holders -- picks only available from veto text
+- [03-05]: Performance page metrics are in FusionChart JSON (data-fusionchart-config), not HTML tables -- use json.loads() for extraction
+- [03-05]: Rating 2.0 pages still exist (sample 162345, Sep 2023 tier-3 match) -- parser must detect via last bar label ("Rating 2.0" = 6 bars vs "Rating 3.0" = 7 bars)
+- [03-05]: Eco-adjusted stats (eK-eD, eADR, eKAST) are NOT on performance page -- only on map stats overview page
+- [03-05]: Multi-kill counts (2k-5k) and clutch stats (1v1-1v5) are NOT on performance page -- performance page has rates and ratings only
+- [03-05]: Kill matrix has 3 types (All/First kills/AWP kills) all in initial HTML (hidden divs with class "hidden")
 
 ### Pending Todos
 
@@ -92,12 +97,12 @@ None yet.
 ### Blockers/Concerns
 
 - ~~[Research]: Economy data availability for historical matches uncertain~~ -- RESOLVED in 03-06: Economy data exists for all eras (2023-2026) with identical structure. OT economy data missing for MR12 matches only.
-- ~~[Research]: Rating 2.0 vs 3.0 HTML differences unknown~~ -- PARTIALLY RESOLVED: 03-01 stated all pages use 3.0, but 03-04 found sample 162345 (Sep 2023) still uses Rating 2.0 column structure (no Swing column, null eco-adjusted values). Parsers must handle both versions.
+- ~~[Research]: Rating 2.0 vs 3.0 HTML differences unknown~~ -- RESOLVED across 03-04 and 03-05: Sample 162345 (Sep 2023, tier-3) retains Rating 2.0 format on both map stats (no Swing column, null eco-adjusted) and performance page (6-bar FusionChart with "Impact" and "Rating 2.0"). Detection: map stats uses th.st-rating text; performance uses last FusionChart bar label. Parsers must handle both versions.
 - [01-03]: nodriver requires a real Chrome installation and runs a full browser process -- heavier than curl_cffi but necessary for Cloudflare bypass
 - [02-01]: Economy->round_history FK may cause insertion issues if economy data exists without matching round history -- monitor in parsing phases
 
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 03-03-PLAN.md (match overview selector map)
+Stopped at: Completed 03-05-PLAN.md (performance page selector map)
 Resume file: None
