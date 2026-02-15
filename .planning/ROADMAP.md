@@ -78,20 +78,20 @@ Plans:
 - [x] 03-07-PLAN.md -- Edge case consolidation and cross-page data overlap synthesis
 
 ### Phase 4: Match Discovery
-**Goal**: The scraper can systematically find every CS2-era match on HLTV by paginating the results listing
+**Goal**: Paginate HLTV results pages (offsets 0-9900) to discover match IDs and populate a scrape queue for downstream phases
 **Depends on**: Phase 1, Phase 2, Phase 3
 **Requirements**: DISC-01, DISC-02, DISC-03
 **Success Criteria** (what must be TRUE):
   1. Scraper paginates through HLTV /results pages using offset-based navigation and discovers match URLs
-  2. Scraper only collects matches from the CS2 era (post September 2023), stopping pagination at the boundary
-  3. Each discovered match has its match ID, teams, score, event name, star rating, and date extracted from the listing page
-  4. Discovered matches are persisted to the database so they survive process restarts
-**Plans**: TBD
+  2. Scraper collects all matches within fixed offset range 0-9900 (CS2-era classification deferred to later phases)
+  3. Each discovered match has its match ID, URL, forfeit flag, and timestamp extracted from the listing page
+  4. Discovered matches are persisted to a scrape_queue table and survive process restarts via offset-based resume
+**Plans**: 3 plans
 
 Plans:
-- [ ] 04-01: Results page HTML analysis and selector map for listing entries
-- [ ] 04-02: Pagination logic with CS2-era date boundary detection
-- [ ] 04-03: Discovery data extraction and database persistence
+- [ ] 04-01-PLAN.md -- Schema migration, config extension, HtmlStorage results methods, and DiscoveryRepository
+- [ ] 04-02-PLAN.md -- ResultsPageParser with BeautifulSoup and unit tests against real HTML samples
+- [ ] 04-03-PLAN.md -- DiscoveryRunner async orchestrator with resume support and integration test
 
 ### Phase 5: Match Overview Extraction
 **Goal**: Every discovered match has its full overview data extracted -- teams, scores, format, event, vetoes, rosters, and links to per-map stats pages
@@ -198,7 +198,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 1. HTTP Client and Anti-Detection | 3/3 | Complete | 2026-02-14 |
 | 2. Storage Foundation | 2/2 | Complete | 2026-02-15 |
 | 3. Page Reconnaissance | 7/7 | Complete | 2026-02-15 |
-| 4. Match Discovery | 0/3 | Not started | - |
+| 4. Match Discovery | 0/3 | Planned | - |
 | 5. Match Overview Extraction | 0/5 | Not started | - |
 | 6. Map Stats Extraction | 0/4 | Not started | - |
 | 7. Performance and Economy Extraction | 0/6 | Not started | - |
@@ -207,4 +207,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 
 ---
 *Roadmap created: 2026-02-14*
-*Last updated: 2026-02-15 -- Phase 3 complete: 7/7 plans, 5/5 must-haves verified*
+*Last updated: 2026-02-15 -- Phase 4 planned: 3 plans in 2 waves*
