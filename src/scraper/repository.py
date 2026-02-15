@@ -163,6 +163,18 @@ UPSERT_VETO = """
         parser_version = excluded.parser_version
 """
 
+GET_PENDING_MAP_STATS = """
+    SELECT m.match_id, m.map_number, m.mapstatsid
+    FROM maps m
+    WHERE m.mapstatsid IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM player_stats ps
+        WHERE ps.match_id = m.match_id AND ps.map_number = m.map_number
+      )
+    ORDER BY m.match_id, m.map_number
+    LIMIT ?
+"""
+
 UPSERT_MATCH_PLAYER = """
     INSERT INTO match_players (
         match_id, player_id, player_name, team_id, team_num,
@@ -266,6 +278,22 @@ class MatchRepository:
             for player in players_data:
                 self.conn.execute(UPSERT_MATCH_PLAYER, player)
 
+    def upsert_map_stats_complete(
+        self, stats_data: list[dict], rounds_data: list[dict]
+    ) -> None:
+        """Atomically upsert player stats AND round history for a map.
+
+        Writes all ``stats_data`` rows into ``player_stats`` and all
+        ``rounds_data`` rows into ``round_history`` inside a single
+        transaction.  Either everything is committed or nothing is
+        (rollback on any error).
+        """
+        with self.conn:
+            for row in stats_data:
+                self.conn.execute(UPSERT_PLAYER_STATS, row)
+            for row in rounds_data:
+                self.conn.execute(UPSERT_ROUND, row)
+
     def upsert_map_player_stats(self, stats_data: list[dict]) -> None:
         """Atomically upsert multiple player stats rows."""
         with self.conn:
@@ -287,6 +315,16 @@ class MatchRepository:
     # ------------------------------------------------------------------
     # Read methods
     # ------------------------------------------------------------------
+
+    def get_pending_map_stats(self, limit: int = 10) -> list[dict]:
+        """Return maps that have a mapstatsid but no player_stats rows yet.
+
+        These are maps whose map-stats page has not been scraped, or
+        whose scrape failed to produce any player stats.  Results are
+        ordered by (match_id, map_number) for deterministic processing.
+        """
+        rows = self.conn.execute(GET_PENDING_MAP_STATS, (limit,)).fetchall()
+        return [dict(r) for r in rows]
 
     def get_match(self, match_id: int) -> dict | None:
         """Return a match as a dict, or None if not found."""

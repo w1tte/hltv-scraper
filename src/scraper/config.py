@@ -48,3 +48,6 @@ class ScraperConfig:
 
     # Match overview batch size
     overview_batch_size: int = 10    # Matches to fetch per batch before parsing
+
+    # Map stats batch size (maps per batch, not matches)
+    map_stats_batch_size: int = 10
