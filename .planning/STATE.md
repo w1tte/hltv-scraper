@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 5 (Match Overview Extraction) COMPLETE. All 3 plans delivered. Next: Phase 6 (Map Stats Extraction).
+**Current focus:** Phase 6 (Map Stats Extraction) in progress. Plan 06-02 (repository extension) delivered. Next: remaining 06 plans.
 
 ## Current Position
 
-Phase: 5 of 9 (Match Overview Extraction)
-Plan: 3 of 3 in current phase
-Status: Phase complete
-Last activity: 2026-02-15 -- Completed 05-03-PLAN.md (overview orchestrator)
+Phase: 6 of 9 (Map Stats Extraction)
+Plan: 1 of 3 in current phase (06-02 complete)
+Status: In progress
+Last activity: 2026-02-15 -- Completed 06-02-PLAN.md (map stats repository extension)
 
-Progress: [████------] 45% (18/40 plans across all phases)
+Progress: [████------] 47% (19/40 plans across all phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 18
+- Total plans completed: 19
 - Average duration: ~9 min
 - Total execution time: ~2.6 hours
 
@@ -32,10 +32,11 @@ Progress: [████------] 45% (18/40 plans across all phases)
 | 03-page-reconnaissance | 7/7 | ~82 min | ~12 min |
 | 04-match-discovery | 3/3 | ~9 min | ~3 min |
 | 05-match-overview | 3/3 | ~20 min | ~7 min |
+| 06-map-stats-extraction | 1/3 | ~2 min | ~2 min |
 
 **Recent Trend:**
-- Last 5 plans: 05-03 (9 min), 05-02 (8 min), 05-01 (3 min), 04-03 (3 min), 04-01 (4 min)
-- Orchestrator plan took ~9 min due to full pipeline integration tests with real HTML samples
+- Last 5 plans: 06-02 (2 min), 05-03 (9 min), 05-02 (8 min), 05-01 (3 min), 04-03 (3 min)
+- Repository extension plan was fast -- pure DB methods with no HTML parsing or external dependencies
 
 *Updated after each plan completion*
 
@@ -112,6 +113,9 @@ Recent decisions affecting current work:
 - [05-03]: Fetch failures discard entire batch; queue entries remain pending for retry
 - [05-03]: Parse/persist failures are per-match; failed matches get status='failed', others continue
 - [05-03]: Date conversion from unix ms to ISO 8601 YYYY-MM-DD for DB storage
+- [06-02]: get_pending_map_stats uses NOT EXISTS subquery against player_stats to find unprocessed maps (same pattern as pending matches)
+- [06-02]: upsert_map_stats_complete writes player_stats + round_history atomically in single transaction
+- [06-02]: map_stats_batch_size config defaults to 10 (maps per batch, not matches)
 
 ### Pending Todos
 
@@ -127,5 +131,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 05-03-PLAN.md (overview orchestrator) -- Phase 5 complete
+Stopped at: Completed 06-02-PLAN.md (map stats repository extension) -- Phase 6 in progress
 Resume file: None
