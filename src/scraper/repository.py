@@ -146,6 +146,40 @@ UPSERT_ECONOMY = """
         parser_version  = excluded.parser_version
 """
 
+UPSERT_VETO = """
+    INSERT INTO vetoes (
+        match_id, step_number, team_name, action, map_name,
+        scraped_at, updated_at, source_url, parser_version
+    ) VALUES (
+        :match_id, :step_number, :team_name, :action, :map_name,
+        :scraped_at, :scraped_at, :source_url, :parser_version
+    )
+    ON CONFLICT(match_id, step_number) DO UPDATE SET
+        team_name      = excluded.team_name,
+        action         = excluded.action,
+        map_name       = excluded.map_name,
+        updated_at     = excluded.scraped_at,
+        source_url     = excluded.source_url,
+        parser_version = excluded.parser_version
+"""
+
+UPSERT_MATCH_PLAYER = """
+    INSERT INTO match_players (
+        match_id, player_id, player_name, team_id, team_num,
+        scraped_at, updated_at, source_url, parser_version
+    ) VALUES (
+        :match_id, :player_id, :player_name, :team_id, :team_num,
+        :scraped_at, :scraped_at, :source_url, :parser_version
+    )
+    ON CONFLICT(match_id, player_id) DO UPDATE SET
+        player_name    = excluded.player_name,
+        team_id        = excluded.team_id,
+        team_num       = excluded.team_num,
+        updated_at     = excluded.scraped_at,
+        source_url     = excluded.source_url,
+        parser_version = excluded.parser_version
+"""
+
 
 # ---------------------------------------------------------------------------
 # Repository class
@@ -202,12 +236,35 @@ class MatchRepository:
     def upsert_match_maps(self, match_data: dict, maps_data: list[dict]) -> None:
         """Atomically upsert a match and all its maps.
 
-        This is what Phase 5 will call after parsing an overview page.
+        Legacy method kept for backward compatibility.
+        Prefer ``upsert_match_overview`` for Phase 5+ usage.
         """
         with self.conn:
             self.conn.execute(UPSERT_MATCH, match_data)
             for map_data in maps_data:
                 self.conn.execute(UPSERT_MAP, map_data)
+
+    def upsert_match_overview(
+        self,
+        match_data: dict,
+        maps_data: list[dict],
+        vetoes_data: list[dict],
+        players_data: list[dict],
+    ) -> None:
+        """Atomically upsert a match with ALL related overview data.
+
+        Writes the match record, map records, veto sequence, and player
+        roster in a single transaction.  This is the primary method the
+        Phase 5 orchestrator calls after parsing a match overview page.
+        """
+        with self.conn:
+            self.conn.execute(UPSERT_MATCH, match_data)
+            for map_data in maps_data:
+                self.conn.execute(UPSERT_MAP, map_data)
+            for veto in vetoes_data:
+                self.conn.execute(UPSERT_VETO, veto)
+            for player in players_data:
+                self.conn.execute(UPSERT_MATCH_PLAYER, player)
 
     def upsert_map_player_stats(self, stats_data: list[dict]) -> None:
         """Atomically upsert multiple player stats rows."""
@@ -253,6 +310,23 @@ class MatchRepository:
             "WHERE match_id = ? AND map_number = ? "
             "ORDER BY player_id",
             (match_id, map_number),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_vetoes(self, match_id: int) -> list[dict]:
+        """Return all vetoes for a match, ordered by step_number."""
+        rows = self.conn.execute(
+            "SELECT * FROM vetoes WHERE match_id = ? ORDER BY step_number",
+            (match_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_match_players(self, match_id: int) -> list[dict]:
+        """Return all players for a match, ordered by team_num then player_id."""
+        rows = self.conn.execute(
+            "SELECT * FROM match_players WHERE match_id = ? "
+            "ORDER BY team_num, player_id",
+            (match_id,),
         ).fetchall()
         return [dict(r) for r in rows]
 

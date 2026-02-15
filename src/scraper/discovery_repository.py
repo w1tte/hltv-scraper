@@ -33,6 +33,8 @@ MARK_OFFSET = """
     VALUES (?, ?)
 """
 
+UPDATE_STATUS = "UPDATE scrape_queue SET status = ? WHERE match_id = ?"
+
 
 # ---------------------------------------------------------------------------
 # Repository class
@@ -130,3 +132,29 @@ class DiscoveryRepository:
             "SELECT * FROM scrape_queue WHERE match_id = ?", (match_id,)
         ).fetchone()
         return dict(row) if row is not None else None
+
+    # ------------------------------------------------------------------
+    # Queue management methods (Phase 5 orchestrator)
+    # ------------------------------------------------------------------
+
+    def get_pending_matches(self, limit: int = 10) -> list[dict]:
+        """Return pending queue entries ordered by match_id.
+
+        The Phase 5 orchestrator calls this to get the next batch of
+        matches to scrape.  Returns up to *limit* entries with
+        status = 'pending'.
+        """
+        rows = self.conn.execute(
+            "SELECT * FROM scrape_queue WHERE status = 'pending' "
+            "ORDER BY match_id LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_status(self, match_id: int, status: str) -> None:
+        """Transition a queue entry to 'scraped' or 'failed'.
+
+        Uses ``with self.conn:`` for automatic commit/rollback.
+        """
+        with self.conn:
+            self.conn.execute(UPDATE_STATUS, (status, match_id))
