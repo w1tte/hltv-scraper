@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 3 in progress. Plans 03-01, 03-02, 03-04, 03-06 complete. Next: remaining wave-2 plans (03-03, 03-05) then 03-07.
+**Current focus:** Phase 3 in progress. Plans 03-01, 03-02, 03-03, 03-04, 03-06 complete. Next: 03-05 (performance page) then 03-07 (edge cases).
 
 ## Current Position
 
 Phase: 3 of 9 (Page Reconnaissance) -- IN PROGRESS
-Plan: 4 of 7 in current phase (03-01, 03-02, 03-04, 03-06 complete)
+Plan: 5 of 7 in current phase (03-01, 03-02, 03-03, 03-04, 03-06 complete)
 Status: In progress
-Last activity: 2026-02-15 -- Completed 03-04-PLAN.md (map stats selector map)
+Last activity: 2026-02-15 -- Completed 03-03-PLAN.md (match overview selector map)
 
-Progress: [███████░░░] 75%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
+- Total plans completed: 10
 - Average duration: ~11 min
-- Total execution time: ~1.6 hours
+- Total execution time: ~1.8 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [███████░░░] 75%
 |-------|-------|-------|----------|
 | 01-http-client | 3/3 | ~45 min | ~15 min |
 | 02-storage-foundation | 2/2 | ~6 min | ~3 min |
-| 03-page-reconnaissance | 4/7 | ~49 min | ~12 min |
+| 03-page-reconnaissance | 5/7 | ~63 min | ~13 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-02 (2 min), 03-01 (17 min -- live fetching with pauses), 03-02 (7 min), 03-06 (12 min), 03-04 (13 min)
-- 03-04 was map stats page selector discovery with programmatic verification against 12 samples
+- Last 5 plans: 03-01 (17 min), 03-02 (7 min), 03-06 (12 min), 03-04 (13 min), 03-03 (14 min)
+- 03-03 was match overview page selector discovery with programmatic verification against 9 samples
 
 *Updated after each plan completion*
 
@@ -78,6 +78,12 @@ Recent decisions affecting current work:
 - [03-04]: Single OT (30 rounds) stays in one container; extended OT (36+ rounds) gets separate "Overtime" container
 - [03-04]: 6 stats tables per page: 2 totalstats (visible) + 2 ctstats + 2 tstats (both hidden, same column layout)
 - [03-04]: First .stats-table.totalstats = team-left, second = team-right
+- [03-03]: Rankings are inside .lineups .box-headline .teamRanking, NOT inside .team{1,2}-gradient
+- [03-03]: Two .veto-box elements per page: first is format/metadata, second is actual veto sequence
+- [03-03]: Team1 = always left (.results-left); team2 = always right (.results-right) in map holders
+- [03-03]: Full forfeit matches lack .won/.lost divs entirely; countdown shows "Match deleted"
+- [03-03]: Half-score spans use class="ct"/"t" for side indication; overtime spans lack side classes
+- [03-03]: No map pick indicator on map holders -- picks only available from veto text
 
 ### Pending Todos
 
@@ -93,5 +99,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 03-04-PLAN.md (map stats selector map)
+Stopped at: Completed 03-03-PLAN.md (match overview selector map)
 Resume file: None
