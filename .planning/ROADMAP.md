@@ -66,16 +66,16 @@ Plans:
   3. Structural differences between match formats are documented: BO1 vs BO3/BO5 (number of map tabs, veto length), forfeit/walkover matches (missing stats), overtime matches (extra rounds)
   4. The difference between Rating 2.0/2.1 pages and Rating 3.0 pages is documented with concrete HTML examples showing which fields change
   5. Each page type's selector map identifies which data fields overlap with other pages vs. which are unique to that page type only
-**Plans**: TBD
+**Plans**: 7 plans
 
 Plans:
-- [ ] 03-01: Fetch and archive sample pages (results listing, BO1 match, BO3 match, forfeit/walkover)
-- [ ] 03-02: Results listing page analysis (pagination structure, match entry selectors, available metadata)
-- [ ] 03-03: Match overview page analysis (metadata, teams, scores, vetoes, rosters, map links)
-- [ ] 03-04: Map overview (stats) page analysis (scoreboard, round history, side stats)
-- [ ] 03-05: Map performance page analysis (detailed player metrics, Rating 2.0 vs 3.0 field differences)
-- [ ] 03-06: Map economy page analysis (per-round equipment values, buy type classifications)
-- [ ] 03-07: Edge case and cross-page synthesis (BO1 vs BO3 differences, overtime, forfeits, data overlap map)
+- [ ] 03-01-PLAN.md -- Fetch and archive sample HTML for all 5 page types across eras, formats, and edge cases
+- [ ] 03-02-PLAN.md -- Results listing page selector map (pagination, match entries, metadata)
+- [ ] 03-03-PLAN.md -- Match overview page selector map (teams, scores, vetoes, rosters, map links)
+- [ ] 03-04-PLAN.md -- Map stats page selector map (scoreboard, round history, side stats)
+- [ ] 03-05-PLAN.md -- Map performance page selector map (metrics, Rating 2.0 vs 3.0 differences)
+- [ ] 03-06-PLAN.md -- Map economy page selector map (equipment values, buy types)
+- [ ] 03-07-PLAN.md -- Edge case consolidation and cross-page data overlap synthesis
 
 ### Phase 4: Match Discovery
 **Goal**: The scraper can systematically find every CS2-era match on HLTV by paginating the results listing
@@ -207,4 +207,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 
 ---
 *Roadmap created: 2026-02-14*
-*Last updated: 2026-02-15 -- Phase 2 complete: 2/2 plans verified, 9/9 must-haves pass*
+*Last updated: 2026-02-15 -- Phase 3 planned: 7 plans in 3 waves*
