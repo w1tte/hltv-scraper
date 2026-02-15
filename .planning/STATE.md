@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 4 (Match Discovery) complete. All 3 plans executed. Ready for Phase 5 (Match Overview parsing).
+**Current focus:** Phase 5 (Match Overview Extraction) in progress. Plan 1 of 3 complete (schema extensions). Next: Plan 2 (match overview parser).
 
 ## Current Position
 
-Phase: 4 of 9 (Match Discovery)
-Plan: 3 of 3 in current phase (all complete)
-Status: Phase complete
-Last activity: 2026-02-15 -- Completed 04-03-PLAN.md (discovery runner)
+Phase: 5 of 9 (Match Overview Extraction)
+Plan: 1 of 3 in current phase
+Status: In progress
+Last activity: 2026-02-15 -- Completed 05-01-PLAN.md (schema extensions and queue management)
 
-Progress: [████------] 38% (15/40 plans across all phases)
+Progress: [████------] 40% (16/40 plans across all phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
+- Total plans completed: 16
 - Average duration: ~9 min
 - Total execution time: ~2.3 hours
 
@@ -31,10 +31,11 @@ Progress: [████------] 38% (15/40 plans across all phases)
 | 02-storage-foundation | 2/2 | ~6 min | ~3 min |
 | 03-page-reconnaissance | 7/7 | ~82 min | ~12 min |
 | 04-match-discovery | 3/3 | ~9 min | ~3 min |
+| 05-match-overview | 1/3 | ~3 min | ~3 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-03 (3 min), 04-01 (4 min), 04-02 (2 min), 03-07 (5 min), 03-02 (7 min)
-- Phase 4 complete in 9 minutes total -- building on established patterns from Phases 1-2
+- Last 5 plans: 05-01 (3 min), 04-03 (3 min), 04-01 (4 min), 04-02 (2 min), 03-07 (5 min)
+- Schema/repository plans consistently fast (~3 min) due to established patterns
 
 *Updated after each plan completion*
 
@@ -102,6 +103,9 @@ Recent decisions affecting current work:
 - [04-03]: run_discovery accepts untyped parameters (client, repo, storage, config) to avoid circular imports with http_client.py
 - [04-03]: Zero-entry pages raise RuntimeError to halt pagination (Cloudflare detection)
 - [04-03]: Non-100 entry counts produce warnings but continue (last page tolerance)
+- [05-01]: Vetoes table uses match_id+step_number composite PK; match_players uses match_id+player_id composite PK
+- [05-01]: upsert_match_overview writes match+maps+vetoes+players in single transaction for atomicity
+- [05-01]: get_pending_matches ordered by match_id ascending for deterministic processing order
 
 ### Pending Todos
 
@@ -117,5 +121,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 04-03-PLAN.md (discovery runner -- Phase 4 complete)
+Stopped at: Completed 05-01-PLAN.md (schema extensions and queue management)
 Resume file: None
