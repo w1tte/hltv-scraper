@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 4 (Match Discovery) in progress. Infrastructure and parser complete, discovery runner next.
+**Current focus:** Phase 4 (Match Discovery) complete. All 3 plans executed. Ready for Phase 5 (Match Overview parsing).
 
 ## Current Position
 
 Phase: 4 of 9 (Match Discovery)
-Plan: 2 of N in current phase (01 and 02 complete)
-Status: In progress
-Last activity: 2026-02-15 -- Completed 04-01-PLAN.md (discovery infrastructure)
+Plan: 3 of 3 in current phase (all complete)
+Status: Phase complete
+Last activity: 2026-02-15 -- Completed 04-03-PLAN.md (discovery runner)
 
-Progress: [████------] 35% (14/40 plans across all phases)
+Progress: [████------] 38% (15/40 plans across all phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
-- Average duration: ~10 min
-- Total execution time: ~2.2 hours
+- Total plans completed: 15
+- Average duration: ~9 min
+- Total execution time: ~2.3 hours
 
 **By Phase:**
 
@@ -30,11 +30,11 @@ Progress: [████------] 35% (14/40 plans across all phases)
 | 01-http-client | 3/3 | ~45 min | ~15 min |
 | 02-storage-foundation | 2/2 | ~6 min | ~3 min |
 | 03-page-reconnaissance | 7/7 | ~82 min | ~12 min |
-| 04-match-discovery | 2/N | ~6 min | ~3 min |
+| 04-match-discovery | 3/3 | ~9 min | ~3 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-01 (4 min), 04-02 (2 min), 03-07 (5 min), 03-02 (7 min), 03-06 (12 min)
-- Phase 4 plans are fast -- building on established patterns from Phases 1-2
+- Last 5 plans: 04-03 (3 min), 04-01 (4 min), 04-02 (2 min), 03-07 (5 min), 03-02 (7 min)
+- Phase 4 complete in 9 minutes total -- building on established patterns from Phases 1-2
 
 *Updated after each plan completion*
 
@@ -99,6 +99,9 @@ Recent decisions affecting current work:
 - [04-01]: persist_page combines batch upsert + offset marking in single transaction for atomicity
 - [04-02]: data-zonedgrouping-entry-unix attribute selector skips big-results without needing container-based logic -- cleaner than "last .results-all" approach
 - [04-02]: parse_results_page is a pure function (HTML string in, list[DiscoveredMatch] out) -- no side effects, no state
+- [04-03]: run_discovery accepts untyped parameters (client, repo, storage, config) to avoid circular imports with http_client.py
+- [04-03]: Zero-entry pages raise RuntimeError to halt pagination (Cloudflare detection)
+- [04-03]: Non-100 entry counts produce warnings but continue (last page tolerance)
 
 ### Pending Todos
 
@@ -114,5 +117,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 04-01-PLAN.md (discovery infrastructure)
+Stopped at: Completed 04-03-PLAN.md (discovery runner -- Phase 4 complete)
 Resume file: None
