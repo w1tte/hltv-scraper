@@ -120,13 +120,12 @@ Plans:
   2. Scraper extracts the round-by-round history with outcome types (bomb plant, elimination, defuse, time runout) for every round
   3. Scraper extracts CT-side and T-side round win counts per team for each map
   4. All extracted map stats are persisted to the database linked to the correct match and map
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 06-01: Map overview page HTML analysis and selector map
-- [ ] 06-02: Per-player scoreboard parser
-- [ ] 06-03: Round history and side-stats parser
-- [ ] 06-04: Map stats integration (fetch, store raw HTML, parse, persist to DB)
+- [ ] 06-01-PLAN.md -- Pure-function map stats parser with scoreboard + round history extraction, tested against 12 recon samples
+- [ ] 06-02-PLAN.md -- Repository extension (pending map query, atomic upsert) and config batch size
+- [ ] 06-03-PLAN.md -- Async orchestrator wiring fetch, store, parse, and persist for map stats pages
 
 ### Phase 7: Performance and Economy Extraction
 **Goal**: Every played map has its detailed performance metrics and round-by-round economy data extracted from the two remaining sub-pages
@@ -198,11 +197,11 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 3. Page Reconnaissance | 7/7 | Complete | 2026-02-15 |
 | 4. Match Discovery | 3/3 | Complete | 2026-02-15 |
 | 5. Match Overview Extraction | 3/3 | Complete | 2026-02-15 |
-| 6. Map Stats Extraction | 0/4 | Not started | - |
+| 6. Map Stats Extraction | 0/3 | Planned | - |
 | 7. Performance and Economy Extraction | 0/6 | Not started | - |
 | 8. Data Validation | 0/4 | Not started | - |
 | 9. Pipeline Orchestration | 0/6 | Not started | - |
 
 ---
 *Roadmap created: 2026-02-14*
-*Last updated: 2026-02-15 -- Phase 5 complete: 3/3 plans executed, goal verified*
+*Last updated: 2026-02-15 -- Phase 6 planned: 3 plans in 2 waves*
