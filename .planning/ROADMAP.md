@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Page Reconnaissance** - Fetch, inspect, and document every HLTV page type to map available data before building parsers
 - [x] **Phase 4: Match Discovery** - Paginate HLTV results pages to collect all CS2-era match IDs
 - [x] **Phase 5: Match Overview Extraction** - Parse match detail pages for teams, scores, vetoes, rosters
-- [ ] **Phase 6: Map Stats Extraction** - Parse per-map overview pages for scoreboards and round history
+- [x] **Phase 6: Map Stats Extraction** - Parse per-map overview pages for scoreboards and round history
 - [ ] **Phase 7: Performance and Economy Extraction** - Parse performance and economy sub-pages per map
 - [ ] **Phase 8: Data Validation** - Pydantic schema enforcement and cross-field integrity checks
 - [ ] **Phase 9: Pipeline Orchestration** - End-to-end pipeline with state tracking, resume, incremental mode, and logging
@@ -123,9 +123,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 06-01-PLAN.md -- Pure-function map stats parser with scoreboard + round history extraction, tested against 12 recon samples
-- [ ] 06-02-PLAN.md -- Repository extension (pending map query, atomic upsert) and config batch size
-- [ ] 06-03-PLAN.md -- Async orchestrator wiring fetch, store, parse, and persist for map stats pages
+- [x] 06-01-PLAN.md -- Pure-function map stats parser with scoreboard + round history extraction, tested against 12 recon samples
+- [x] 06-02-PLAN.md -- Repository extension (pending map query, atomic upsert) and config batch size
+- [x] 06-03-PLAN.md -- Async orchestrator wiring fetch, store, parse, and persist for map stats pages
 
 ### Phase 7: Performance and Economy Extraction
 **Goal**: Every played map has its detailed performance metrics and round-by-round economy data extracted from the two remaining sub-pages
@@ -197,11 +197,11 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 3. Page Reconnaissance | 7/7 | Complete | 2026-02-15 |
 | 4. Match Discovery | 3/3 | Complete | 2026-02-15 |
 | 5. Match Overview Extraction | 3/3 | Complete | 2026-02-15 |
-| 6. Map Stats Extraction | 0/3 | Planned | - |
+| 6. Map Stats Extraction | 3/3 | Complete | 2026-02-16 |
 | 7. Performance and Economy Extraction | 0/6 | Not started | - |
 | 8. Data Validation | 0/4 | Not started | - |
 | 9. Pipeline Orchestration | 0/6 | Not started | - |
 
 ---
 *Roadmap created: 2026-02-14*
-*Last updated: 2026-02-15 -- Phase 6 planned: 3 plans in 2 waves*
+*Last updated: 2026-02-16 -- Phase 6 complete: 3/3 plans executed, goal verified*

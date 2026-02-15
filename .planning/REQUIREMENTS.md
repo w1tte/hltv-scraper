@@ -30,9 +30,9 @@
 
 ### Map Stats — Overview
 
-- [ ] **MAPS-01**: Scraper extracts per-player scoreboard from map overview: kills, deaths, assists, flash assists, HS kills, K/D diff, ADR, KAST%, first kills diff, rating
-- [ ] **MAPS-02**: Scraper extracts round-by-round history with outcome types (bomb, elimination, defuse, time)
-- [ ] **MAPS-03**: Scraper extracts CT/T side round wins per team
+- [x] **MAPS-01**: Scraper extracts per-player scoreboard from map overview: kills, deaths, assists, flash assists, HS kills, K/D diff, ADR, KAST%, first kills diff, rating
+- [x] **MAPS-02**: Scraper extracts round-by-round history with outcome types (bomb, elimination, defuse, time)
+- [x] **MAPS-03**: Scraper extracts CT/T side round wins per team
 
 ### Map Stats — Performance
 
@@ -108,9 +108,9 @@
 | MTCH-04 | Phase 5 | Complete |
 | MTCH-05 | Phase 5 | Complete |
 | MTCH-06 | Phase 5 | Complete |
-| MAPS-01 | Phase 6 | Pending |
-| MAPS-02 | Phase 6 | Pending |
-| MAPS-03 | Phase 6 | Pending |
+| MAPS-01 | Phase 6 | Complete |
+| MAPS-02 | Phase 6 | Complete |
+| MAPS-03 | Phase 6 | Complete |
 | PERF-01 | Phase 7 | Pending |
 | PERF-02 | Phase 7 | Pending |
 | ECON-01 | Phase 7 | Pending |
@@ -135,4 +135,4 @@
 
 ---
 *Requirements defined: 2026-02-14*
-*Last updated: 2026-02-15 -- MTCH-01 through MTCH-06 marked Complete (Phase 5 verified)*
+*Last updated: 2026-02-16 -- MAPS-01 through MAPS-03 marked Complete (Phase 6 verified)*
