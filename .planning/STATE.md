@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 3 in progress. Plans 03-01, 03-02, 03-06 complete. Next: remaining wave-2 plans (03-03, 03-04, 03-05) then 03-07.
+**Current focus:** Phase 3 in progress. Plans 03-01, 03-02, 03-04, 03-06 complete. Next: remaining wave-2 plans (03-03, 03-05) then 03-07.
 
 ## Current Position
 
 Phase: 3 of 9 (Page Reconnaissance) -- IN PROGRESS
-Plan: 3 of 7 in current phase (03-01, 03-02, 03-06 complete)
+Plan: 4 of 7 in current phase (03-01, 03-02, 03-04, 03-06 complete)
 Status: In progress
-Last activity: 2026-02-15 -- Completed 03-06-PLAN.md (economy page selector map)
+Last activity: 2026-02-15 -- Completed 03-04-PLAN.md (map stats selector map)
 
-Progress: [██████░░░░] 67%
+Progress: [███████░░░] 75%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: ~11 min
-- Total execution time: ~1.4 hours
+- Total execution time: ~1.6 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [██████░░░░] 67%
 |-------|-------|-------|----------|
 | 01-http-client | 3/3 | ~45 min | ~15 min |
 | 02-storage-foundation | 2/2 | ~6 min | ~3 min |
-| 03-page-reconnaissance | 3/7 | ~36 min | ~12 min |
+| 03-page-reconnaissance | 4/7 | ~49 min | ~12 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (4 min), 02-02 (2 min), 03-01 (17 min -- live fetching with pauses), 03-02 (7 min), 03-06 (12 min)
-- 03-06 was exploratory DOM analysis against 12 economy HTML samples
+- Last 5 plans: 02-02 (2 min), 03-01 (17 min -- live fetching with pauses), 03-02 (7 min), 03-06 (12 min), 03-04 (13 min)
+- 03-04 was map stats page selector discovery with programmatic verification against 12 samples
 
 *Updated after each plan completion*
 
@@ -73,6 +73,11 @@ Recent decisions affecting current work:
 - [03-06]: Buy type thresholds: Full eco <$5K, Semi-eco $5K-$10K, Semi-buy $10K-$20K, Full buy $20K+
 - [03-06]: Economy data available for all eras (2023-2026), identical DOM structure, all extractable from static HTML
 - [03-06]: OT economy data missing for MR12 matches -- page shows regulation rounds only (24 max)
+- [03-04]: Rating 2.0 page (162345) has different column structure than 3.0 -- no st-roundSwing, eco-adjusted values are "null"; detect via th.st-rating text
+- [03-04]: Map name is bare text node in match-info-box (no CSS class) -- requires NavigableString iteration
+- [03-04]: Single OT (30 rounds) stays in one container; extended OT (36+ rounds) gets separate "Overtime" container
+- [03-04]: 6 stats tables per page: 2 totalstats (visible) + 2 ctstats + 2 tstats (both hidden, same column layout)
+- [03-04]: First .stats-table.totalstats = team-left, second = team-right
 
 ### Pending Todos
 
@@ -81,12 +86,12 @@ None yet.
 ### Blockers/Concerns
 
 - ~~[Research]: Economy data availability for historical matches uncertain~~ -- RESOLVED in 03-06: Economy data exists for all eras (2023-2026) with identical structure. OT economy data missing for MR12 matches only.
-- ~~[Research]: Rating 2.0 vs 3.0 HTML differences unknown~~ -- RESOLVED in 03-01: all pages use Rating 3.0 after retroactive application
+- ~~[Research]: Rating 2.0 vs 3.0 HTML differences unknown~~ -- PARTIALLY RESOLVED: 03-01 stated all pages use 3.0, but 03-04 found sample 162345 (Sep 2023) still uses Rating 2.0 column structure (no Swing column, null eco-adjusted values). Parsers must handle both versions.
 - [01-03]: nodriver requires a real Chrome installation and runs a full browser process -- heavier than curl_cffi but necessary for Cloudflare bypass
 - [02-01]: Economy->round_history FK may cause insertion issues if economy data exists without matching round history -- monitor in parsing phases
 
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 03-06-PLAN.md (economy page selector map)
+Stopped at: Completed 03-04-PLAN.md (map stats selector map)
 Resume file: None
