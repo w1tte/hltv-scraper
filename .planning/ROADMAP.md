@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Storage Foundation** - Database schema and raw HTML archival system
 - [x] **Phase 3: Page Reconnaissance** - Fetch, inspect, and document every HLTV page type to map available data before building parsers
 - [x] **Phase 4: Match Discovery** - Paginate HLTV results pages to collect all CS2-era match IDs
-- [ ] **Phase 5: Match Overview Extraction** - Parse match detail pages for teams, scores, vetoes, rosters
+- [x] **Phase 5: Match Overview Extraction** - Parse match detail pages for teams, scores, vetoes, rosters
 - [ ] **Phase 6: Map Stats Extraction** - Parse per-map overview pages for scoreboards and round history
 - [ ] **Phase 7: Performance and Economy Extraction** - Parse performance and economy sub-pages per map
 - [ ] **Phase 8: Data Validation** - Pydantic schema enforcement and cross-field integrity checks
@@ -107,9 +107,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 05-01-PLAN.md -- Schema migration (vetoes + match_players tables), repository UPSERT methods, queue management
-- [ ] 05-02-PLAN.md -- Pure-function match overview parser with dataclasses, tested against 9 real HTML samples
-- [ ] 05-03-PLAN.md -- Async orchestrator wiring fetch, store, parse, and persist into batched pipeline
+- [x] 05-01-PLAN.md -- Schema migration (vetoes + match_players tables), repository UPSERT methods, queue management
+- [x] 05-02-PLAN.md -- Pure-function match overview parser with dataclasses, tested against 9 real HTML samples
+- [x] 05-03-PLAN.md -- Async orchestrator wiring fetch, store, parse, and persist into batched pipeline
 
 ### Phase 6: Map Stats Extraction
 **Goal**: Every played map has its per-player scoreboard and round-by-round history extracted from the map overview page
@@ -197,7 +197,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 2. Storage Foundation | 2/2 | Complete | 2026-02-15 |
 | 3. Page Reconnaissance | 7/7 | Complete | 2026-02-15 |
 | 4. Match Discovery | 3/3 | Complete | 2026-02-15 |
-| 5. Match Overview Extraction | 0/3 | Not started | - |
+| 5. Match Overview Extraction | 3/3 | Complete | 2026-02-15 |
 | 6. Map Stats Extraction | 0/4 | Not started | - |
 | 7. Performance and Economy Extraction | 0/6 | Not started | - |
 | 8. Data Validation | 0/4 | Not started | - |
@@ -205,4 +205,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 
 ---
 *Roadmap created: 2026-02-14*
-*Last updated: 2026-02-15 -- Phase 5 planned: 3 plans in 2 waves*
+*Last updated: 2026-02-15 -- Phase 5 complete: 3/3 plans executed, goal verified*
