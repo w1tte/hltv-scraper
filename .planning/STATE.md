@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 3 in progress. Plan 03-02 (results listing analysis) complete. Next: 03-03 (match overview analysis)
+**Current focus:** Phase 3 in progress. Plans 03-01, 03-02, 03-06 complete. Next: remaining wave-2 plans (03-03, 03-04, 03-05) then 03-07.
 
 ## Current Position
 
 Phase: 3 of 9 (Page Reconnaissance) -- IN PROGRESS
-Plan: 2 of 7 in current phase (03-02 complete)
+Plan: 3 of 7 in current phase (03-01, 03-02, 03-06 complete)
 Status: In progress
-Last activity: 2026-02-15 -- Completed 03-02-PLAN.md (results listing selector map)
+Last activity: 2026-02-15 -- Completed 03-06-PLAN.md (economy page selector map)
 
-Progress: [██████░░░░] 58%
+Progress: [██████░░░░] 67%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: ~11 min
-- Total execution time: ~1.2 hours
+- Total execution time: ~1.4 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [██████░░░░] 58%
 |-------|-------|-------|----------|
 | 01-http-client | 3/3 | ~45 min | ~15 min |
 | 02-storage-foundation | 2/2 | ~6 min | ~3 min |
-| 03-page-reconnaissance | 2/7 | ~24 min | ~12 min |
+| 03-page-reconnaissance | 3/7 | ~36 min | ~12 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-03 (45 min -- included major deviation), 02-01 (4 min), 02-02 (2 min), 03-01 (17 min -- live fetching with pauses), 03-02 (7 min)
-- 03-02 was fast: pure offline analysis against saved HTML samples
+- Last 5 plans: 02-01 (4 min), 02-02 (2 min), 03-01 (17 min -- live fetching with pauses), 03-02 (7 min), 03-06 (12 min)
+- 03-06 was exploratory DOM analysis against 12 economy HTML samples
 
 *Updated after each plan completion*
 
@@ -69,6 +69,10 @@ Recent decisions affecting current work:
 - [03-02]: Big-results featured section (page 1 only) is exact duplicate of regular results -- parsers must skip it
 - [03-02]: map-text encodes format (bo3/bo5), BO1 map name (nuke/ovp/mrg), and forfeit (def) in a single field
 - [03-02]: Use last .results-all container on page to skip big-results; data-zonedgrouping-entry-unix on each .result-con for timestamps
+- [03-06]: FusionCharts JSON in data-fusionchart-config is primary extraction source for economy data -- single JSON blob with all per-round values
+- [03-06]: Buy type thresholds: Full eco <$5K, Semi-eco $5K-$10K, Semi-buy $10K-$20K, Full buy $20K+
+- [03-06]: Economy data available for all eras (2023-2026), identical DOM structure, all extractable from static HTML
+- [03-06]: OT economy data missing for MR12 matches -- page shows regulation rounds only (24 max)
 
 ### Pending Todos
 
@@ -76,7 +80,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Research]: Economy data availability for historical matches uncertain -- verify in Phase 3 reconnaissance (economy pages exist for 2023 matches per 03-01)
+- ~~[Research]: Economy data availability for historical matches uncertain~~ -- RESOLVED in 03-06: Economy data exists for all eras (2023-2026) with identical structure. OT economy data missing for MR12 matches only.
 - ~~[Research]: Rating 2.0 vs 3.0 HTML differences unknown~~ -- RESOLVED in 03-01: all pages use Rating 3.0 after retroactive application
 - [01-03]: nodriver requires a real Chrome installation and runs a full browser process -- heavier than curl_cffi but necessary for Cloudflare bypass
 - [02-01]: Economy->round_history FK may cause insertion issues if economy data exists without matching round history -- monitor in parsing phases
@@ -84,5 +88,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 03-02-PLAN.md (results listing selector map)
+Stopped at: Completed 03-06-PLAN.md (economy page selector map)
 Resume file: None
