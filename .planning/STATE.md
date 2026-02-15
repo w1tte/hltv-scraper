@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 3 in progress. Plans 03-01 through 03-06 complete. Next: 03-07 (edge cases + cross-page synthesis).
+**Current focus:** Phase 3 complete. All page types documented with selector maps, edge cases, and cross-page data overlap. Ready for Phase 4 (Match Discovery).
 
 ## Current Position
 
-Phase: 3 of 9 (Page Reconnaissance) -- IN PROGRESS
-Plan: 6 of 7 in current phase (03-01 through 03-06 complete)
-Status: In progress
-Last activity: 2026-02-15 -- Completed 03-05-PLAN.md (performance page selector map)
+Phase: 3 of 9 (Page Reconnaissance) -- COMPLETE
+Plan: 7 of 7 in current phase (all complete)
+Status: Phase complete
+Last activity: 2026-02-15 -- Completed 03-07-PLAN.md (edge cases + cross-page synthesis)
 
-Progress: [█████████░] 92%
+Progress: [███-------] 30% (12/40 plans across all phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
-- Average duration: ~11 min
-- Total execution time: ~2.0 hours
+- Total plans completed: 12
+- Average duration: ~10 min
+- Total execution time: ~2.1 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [█████████░] 92%
 |-------|-------|-------|----------|
 | 01-http-client | 3/3 | ~45 min | ~15 min |
 | 02-storage-foundation | 2/2 | ~6 min | ~3 min |
-| 03-page-reconnaissance | 6/7 | ~77 min | ~13 min |
+| 03-page-reconnaissance | 7/7 | ~82 min | ~12 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-02 (7 min), 03-06 (12 min), 03-04 (13 min), 03-03 (14 min), 03-05 (14 min)
-- 03-05 was performance page selector discovery with Rating 2.0/3.0 dual-format FusionChart analysis
+- Last 5 plans: 03-07 (5 min), 03-02 (7 min), 03-06 (12 min), 03-04 (13 min), 03-03 (14 min)
+- 03-07 was synthesis-only (no HTML analysis), fastest plan in phase 3
 
 *Updated after each plan completion*
 
@@ -89,6 +89,10 @@ Recent decisions affecting current work:
 - [03-05]: Eco-adjusted stats (eK-eD, eADR, eKAST) are NOT on performance page -- only on map stats overview page
 - [03-05]: Multi-kill counts (2k-5k) and clutch stats (1v1-1v5) are NOT on performance page -- performance page has rates and ratings only
 - [03-05]: Kill matrix has 3 types (All/First kills/AWP kills) all in initial HTML (hidden divs with class "hidden")
+- [03-07]: Canonical extraction sources finalized: team names from Match Overview, scoreboard stats from Map Stats, rate metrics from Performance, economy from Economy page
+- [03-07]: Extraction order: Results Listing (Phase 4) -> Match Overview (Phase 5) -> Map Stats (Phase 6) -> Performance + Economy (Phase 7)
+- [03-07]: Rating detection: primary signal is th.st-rating text on map stats page; secondary is FusionChart last bar label on performance page
+- [03-07]: Forfeit maps must be detected at Match Overview time (mapname == "Default") to avoid fetching non-existent sub-pages
 
 ### Pending Todos
 
@@ -104,5 +108,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 03-05-PLAN.md (performance page selector map)
+Stopped at: Completed 03-07-PLAN.md (edge cases + cross-page synthesis) -- Phase 3 COMPLETE
 Resume file: None
