@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 4 (Match Discovery) in progress. Results page parser complete, building discovery pipeline.
+**Current focus:** Phase 4 (Match Discovery) in progress. Infrastructure and parser complete, discovery runner next.
 
 ## Current Position
 
 Phase: 4 of 9 (Match Discovery)
-Plan: 2 of N in current phase
+Plan: 2 of N in current phase (01 and 02 complete)
 Status: In progress
-Last activity: 2026-02-15 -- Completed 04-02-PLAN.md (results page parser)
+Last activity: 2026-02-15 -- Completed 04-01-PLAN.md (discovery infrastructure)
 
-Progress: [███-------] 33% (13/40 plans across all phases)
+Progress: [████------] 35% (14/40 plans across all phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
+- Total plans completed: 14
 - Average duration: ~10 min
-- Total execution time: ~2.1 hours
+- Total execution time: ~2.2 hours
 
 **By Phase:**
 
@@ -30,11 +30,11 @@ Progress: [███-------] 33% (13/40 plans across all phases)
 | 01-http-client | 3/3 | ~45 min | ~15 min |
 | 02-storage-foundation | 2/2 | ~6 min | ~3 min |
 | 03-page-reconnaissance | 7/7 | ~82 min | ~12 min |
-| 04-match-discovery | 1/N | ~2 min | ~2 min |
+| 04-match-discovery | 2/N | ~6 min | ~3 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-02 (2 min), 03-07 (5 min), 03-02 (7 min), 03-06 (12 min), 03-04 (13 min)
-- 04-02 was straightforward parser implementation with pre-analyzed selectors from Phase 3
+- Last 5 plans: 04-01 (4 min), 04-02 (2 min), 03-07 (5 min), 03-02 (7 min), 03-06 (12 min)
+- Phase 4 plans are fast -- building on established patterns from Phases 1-2
 
 *Updated after each plan completion*
 
@@ -94,6 +94,9 @@ Recent decisions affecting current work:
 - [03-07]: Extraction order: Results Listing (Phase 4) -> Match Overview (Phase 5) -> Map Stats (Phase 6) -> Performance + Economy (Phase 7)
 - [03-07]: Rating detection: primary signal is th.st-rating text on map stats page; secondary is FusionChart last bar label on performance page
 - [03-07]: Forfeit maps must be detected at Match Overview time (mapname == "Default") to avoid fetching non-existent sub-pages
+- [04-01]: UPSERT ON CONFLICT does NOT update status column -- re-discovery preserves scraped/failed state
+- [04-01]: Results pages stored under base_dir/results/ with offset-based naming, separate from matches/ hierarchy
+- [04-01]: persist_page combines batch upsert + offset marking in single transaction for atomicity
 - [04-02]: data-zonedgrouping-entry-unix attribute selector skips big-results without needing container-based logic -- cleaner than "last .results-all" approach
 - [04-02]: parse_results_page is a pure function (HTML string in, list[DiscoveredMatch] out) -- no side effects, no state
 
@@ -111,5 +114,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 04-02-PLAN.md (results page parser)
+Stopped at: Completed 04-01-PLAN.md (discovery infrastructure)
 Resume file: None
