@@ -62,7 +62,7 @@ class TestDatabaseMigrations:
         """After initialize(), get_schema_version() returns latest migration version."""
         db = Database(tmp_path / "test.db")
         db.initialize()
-        assert db.get_schema_version() == 2
+        assert db.get_schema_version() == 3
         db.close()
 
     def test_database_connect_without_initialize(self, tmp_path):
@@ -84,7 +84,7 @@ class TestDatabaseMigrations:
         db = Database(tmp_path / "test.db")
         db.connect()
         first = db.apply_migrations()
-        assert first == 2  # 001_initial_schema + 002_scrape_queue
+        assert first == 3  # 001_initial_schema + 002_scrape_queue + 003_vetoes_rosters
         second = db.apply_migrations()
         assert second == 0
         db.close()
@@ -104,7 +104,7 @@ class TestDatabaseMigrations:
         db.close()
 
     def test_database_all_indexes_created(self, tmp_path):
-        """After initialize(), all 8 custom indexes exist (6 from v1 + 2 from v2)."""
+        """After initialize(), all 10 custom indexes exist (6 from v1 + 2 from v2 + 2 from v3)."""
         db = Database(tmp_path / "test.db")
         db.initialize()
         indexes = {
@@ -122,6 +122,8 @@ class TestDatabaseMigrations:
             "idx_player_stats_team",
             "idx_scrape_queue_status",
             "idx_scrape_queue_offset",
+            "idx_match_players_player",
+            "idx_match_players_team",
         }
         assert indexes == expected
         db.close()
@@ -136,7 +138,7 @@ class TestDatabaseContextManager:
         with Database(db_path) as db:
             assert db.conn is not None
             db.apply_migrations()
-            assert db.get_schema_version() == 2
+            assert db.get_schema_version() == 3
         # After exiting context, connection should be closed
         assert db._conn is None
 
