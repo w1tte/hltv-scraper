@@ -10,6 +10,8 @@ requires-python = ">=3.11"
 dependencies = [
     "nodriver>=0.38",
     "tenacity>=9.0",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
 ]
 
 [project.optional-dependencies]
