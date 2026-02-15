@@ -45,3 +45,6 @@ class ScraperConfig:
     # Discovery pagination
     max_offset: int = 9900           # Last offset to paginate to (inclusive)
     results_per_page: int = 100      # Entries per results page (HLTV constant)
+
+    # Match overview batch size
+    overview_batch_size: int = 10    # Matches to fetch per batch before parsing
