@@ -94,9 +94,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DISC-01 | Phase 4 | Pending |
-| DISC-02 | Phase 4 | Pending |
-| DISC-03 | Phase 4 | Pending |
+| DISC-01 | Phase 4 | Complete |
+| DISC-02 | Phase 4 | Complete |
+| DISC-03 | Phase 4 | Complete |
 | RECON-01 | Phase 3 | Complete |
 | RECON-02 | Phase 3 | Complete |
 | RECON-03 | Phase 3 | Complete |
