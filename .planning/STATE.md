@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 3 in progress. Plan 03-01 (sample fetch) complete. Next: 03-02 (results listing analysis)
+**Current focus:** Phase 3 in progress. Plan 03-02 (results listing analysis) complete. Next: 03-03 (match overview analysis)
 
 ## Current Position
 
 Phase: 3 of 9 (Page Reconnaissance) -- IN PROGRESS
-Plan: 1 of 7 in current phase (03-01 complete)
+Plan: 2 of 7 in current phase (03-02 complete)
 Status: In progress
-Last activity: 2026-02-15 -- Completed 03-01-PLAN.md (48 HTML samples fetched, manifest created)
+Last activity: 2026-02-15 -- Completed 03-02-PLAN.md (results listing selector map)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 58%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: ~12 min
-- Total execution time: ~1.1 hours
+- Total plans completed: 7
+- Average duration: ~11 min
+- Total execution time: ~1.2 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [█████░░░░░] 50%
 |-------|-------|-------|----------|
 | 01-http-client | 3/3 | ~45 min | ~15 min |
 | 02-storage-foundation | 2/2 | ~6 min | ~3 min |
-| 03-page-reconnaissance | 1/7 | ~17 min | ~17 min |
+| 03-page-reconnaissance | 2/7 | ~24 min | ~12 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (2 min), 01-03 (45 min -- included major deviation), 02-01 (4 min), 02-02 (2 min), 03-01 (17 min -- live fetching with pauses)
-- 03-01 was slower due to live HLTV fetching (48 pages across 4 Chrome sessions with 45s pauses between sessions)
+- Last 5 plans: 01-03 (45 min -- included major deviation), 02-01 (4 min), 02-02 (2 min), 03-01 (17 min -- live fetching with pauses), 03-02 (7 min)
+- 03-02 was fast: pure offline analysis against saved HTML samples
 
 *Updated after each plan completion*
 
@@ -66,6 +66,9 @@ Recent decisions affecting current work:
 - [03-01]: Forfeit matches have map name "Default" and zero mapstatsids -- parsers must detect this
 - [03-01]: HLTV URL slug is cosmetic; numeric match ID determines content
 - [03-01]: HTML samples in data/recon/ (gitignored); fetch scripts in scripts/ for reproducibility
+- [03-02]: Big-results featured section (page 1 only) is exact duplicate of regular results -- parsers must skip it
+- [03-02]: map-text encodes format (bo3/bo5), BO1 map name (nuke/ovp/mrg), and forfeit (def) in a single field
+- [03-02]: Use last .results-all container on page to skip big-results; data-zonedgrouping-entry-unix on each .result-con for timestamps
 
 ### Pending Todos
 
@@ -81,5 +84,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 03-01-PLAN.md (sample fetch and manifest)
+Stopped at: Completed 03-02-PLAN.md (results listing selector map)
 Resume file: None
