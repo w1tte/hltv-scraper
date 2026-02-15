@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 2 complete and verified. Next: Phase 3 - Page Reconnaissance
+**Current focus:** Phase 3 in progress. Plan 03-01 (sample fetch) complete. Next: 03-02 (results listing analysis)
 
 ## Current Position
 
-Phase: 2 of 9 (Storage Foundation) -- COMPLETE
-Plan: 2 of 2 in current phase (02-01, 02-02 complete)
-Status: Phase 2 verified and complete
-Last activity: 2026-02-15 -- Phase 2 verified: 9/9 must-haves pass
+Phase: 3 of 9 (Page Reconnaissance) -- IN PROGRESS
+Plan: 1 of 7 in current phase (03-01 complete)
+Status: In progress
+Last activity: 2026-02-15 -- Completed 03-01-PLAN.md (48 HTML samples fetched, manifest created)
 
-Progress: [██░░░░░░░░] 22%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: ~11 min
-- Total execution time: ~0.85 hours
+- Total plans completed: 6
+- Average duration: ~12 min
+- Total execution time: ~1.1 hours
 
 **By Phase:**
 
@@ -29,10 +29,11 @@ Progress: [██░░░░░░░░] 22%
 |-------|-------|-------|----------|
 | 01-http-client | 3/3 | ~45 min | ~15 min |
 | 02-storage-foundation | 2/2 | ~6 min | ~3 min |
+| 03-page-reconnaissance | 1/7 | ~17 min | ~17 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (3 min), 01-02 (2 min), 01-03 (45 min -- included major deviation), 02-01 (4 min), 02-02 (2 min)
-- Phase 2 was fast: zero external dependencies (all stdlib), clean schema+repository pattern
+- Last 5 plans: 01-02 (2 min), 01-03 (45 min -- included major deviation), 02-01 (4 min), 02-02 (2 min), 03-01 (17 min -- live fetching with pauses)
+- 03-01 was slower due to live HLTV fetching (48 pages across 4 Chrome sessions with 45s pauses between sessions)
 
 *Updated after each plan completion*
 
@@ -61,6 +62,10 @@ Recent decisions affecting current work:
 - [02-02]: MatchRepository takes sqlite3.Connection (not Database) for test decoupling
 - [02-02]: UPSERT SQL as module-level constants; batch methods use loop inside with conn: (not executemany)
 - [02-02]: Read methods return dict (via dict(row)); exceptions propagate to callers
+- [03-01]: All HLTV pages now show Rating 3.0 (retroactive application confirmed) -- no Rating 2.0/2.1 column handling needed
+- [03-01]: Forfeit matches have map name "Default" and zero mapstatsids -- parsers must detect this
+- [03-01]: HLTV URL slug is cosmetic; numeric match ID determines content
+- [03-01]: HTML samples in data/recon/ (gitignored); fetch scripts in scripts/ for reproducibility
 
 ### Pending Todos
 
@@ -68,13 +73,13 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Research]: Economy data availability for historical matches uncertain -- verify in Phase 3 reconnaissance
-- [Research]: Rating 2.0 vs 3.0 HTML differences unknown -- document in Phase 3 reconnaissance
+- [Research]: Economy data availability for historical matches uncertain -- verify in Phase 3 reconnaissance (economy pages exist for 2023 matches per 03-01)
+- ~~[Research]: Rating 2.0 vs 3.0 HTML differences unknown~~ -- RESOLVED in 03-01: all pages use Rating 3.0 after retroactive application
 - [01-03]: nodriver requires a real Chrome installation and runs a full browser process -- heavier than curl_cffi but necessary for Cloudflare bypass
 - [02-01]: Economy->round_history FK may cause insertion issues if economy data exists without matching round history -- monitor in parsing phases
 
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Phase 2 complete, verified, and committed
+Stopped at: Completed 03-01-PLAN.md (sample fetch and manifest)
 Resume file: None
