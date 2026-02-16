@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 7 (Performance + Economy Extraction) in progress. Plans 07-01, 07-02, 07-03 complete. Next: 07-04 (orchestrator). 07-02 performance parser now has SUMMARY.
+**Current focus:** Phase 7 (Performance + Economy Extraction) in progress. Plans 07-01, 07-02, 07-03 complete. Next: 07-04 (orchestrator).
 
 ## Current Position
 
 Phase: 7 of 9 (Performance and Economy Extraction)
 Plan: 3 of 4 in current phase (07-01, 07-02, 07-03 complete)
 Status: In progress
-Last activity: 2026-02-16 -- Completed 07-02-PLAN.md (performance page parser)
+Last activity: 2026-02-16 -- Completed 07-01-PLAN.md (schema & repository extension)
 
 Progress: [████████--] 88% (22/25 plans with plan files)
 
@@ -123,6 +123,9 @@ Recent decisions affecting current work:
 - [06-03]: MAP_STATS_URL_TEMPLATE uses '/x' as placeholder slug -- HLTV routes by numeric mapstatsid, slug is cosmetic
 - [06-03]: run_map_stats takes no discovery_repo parameter -- pending state derived from data presence (NOT EXISTS player_stats), not scrape_queue status
 - [06-03]: Test seed helper uses direct SQL INSERT with all NOT NULL columns (including updated_at) rather than repository convenience methods
+- [07-01]: UPSERT_PLAYER_STATS includes all 7 new columns -- both Phase 6 and Phase 7 callers must provide all keys in dict
+- [07-01]: GET_PENDING_PERF_ECONOMY uses kpr IS NULL as the Phase 7 pending indicator (Phase 6 sets kpr=None, Phase 7 fills it in)
+- [07-01]: Phase 6 orchestrator now persists opening_kills through round_swing; mk_rating=None until Phase 7 fills it
 - [07-02]: Rating detection on performance page uses FusionChart last bar label ('Rating 2.0' or 'Rating 3.0') -- reliable across all 12 samples
 - [07-02]: Kill matrix uses combined regex for both player URL patterns: /player/{id}/ and /stats/players/{id}/
 - [07-02]: Dash '-' displayValue in FusionChart treated as 0.0 (found in sample 206393, player ben1337 ADR)
@@ -144,5 +147,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 07-02-PLAN.md (performance page parser) -- 07-01, 07-02, 07-03 all done, 07-04 next
+Stopped at: Completed 07-01-PLAN.md (schema & repository extension) -- 07-01, 07-02, 07-03 all done, 07-04 next
 Resume file: None
