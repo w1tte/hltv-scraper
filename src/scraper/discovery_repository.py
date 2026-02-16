@@ -111,6 +111,45 @@ class DiscoveryRepository:
             )
 
     # ------------------------------------------------------------------
+    # Incremental discovery helpers
+    # ------------------------------------------------------------------
+
+    def count_new_matches(self, match_ids: list[int]) -> int:
+        """Count how many of the given match_ids are NOT already in scrape_queue.
+
+        Used by incremental discovery to decide whether to stop early:
+        if all matches on a page are already known, there is nothing new
+        to discover beyond this point.
+
+        Args:
+            match_ids: List of match IDs from a parsed results page.
+
+        Returns:
+            Number of match_ids not yet present in scrape_queue.
+        """
+        if not match_ids:
+            return 0
+        placeholders = ",".join("?" for _ in match_ids)
+        row = self.conn.execute(
+            f"SELECT COUNT(*) FROM scrape_queue WHERE match_id IN ({placeholders})",
+            match_ids,
+        ).fetchone()
+        existing = row[0]
+        return len(match_ids) - existing
+
+    def reset_failed_matches(self) -> int:
+        """Reset all failed matches back to pending status.
+
+        Called at pipeline start so that previously-failed matches get
+        another chance on each run.  Returns the number of rows affected.
+        """
+        with self.conn:
+            cursor = self.conn.execute(
+                "UPDATE scrape_queue SET status = 'pending' WHERE status = 'failed'"
+            )
+            return cursor.rowcount
+
+    # ------------------------------------------------------------------
     # Count / read methods
     # ------------------------------------------------------------------
 
