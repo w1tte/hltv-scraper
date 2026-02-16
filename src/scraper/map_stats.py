@@ -124,9 +124,16 @@ async def run_map_stats(
                     "fk_diff": ps.fk_diff,
                     "rating_2": ps.rating if ps.rating_version == "2.0" else None,
                     "rating_3": ps.rating if ps.rating_version == "3.0" else None,
-                    "kpr": None,       # Phase 7
-                    "dpr": None,       # Phase 7
-                    "impact": None,    # Phase 7
+                    "kpr": None,       # Phase 7 -- performance page
+                    "dpr": None,       # Phase 7 -- performance page
+                    "impact": None,    # Phase 7 -- performance page
+                    "opening_kills": ps.opening_kills,
+                    "opening_deaths": ps.opening_deaths,
+                    "multi_kills": ps.multi_kills,
+                    "clutch_wins": ps.clutch_wins,
+                    "traded_deaths": ps.traded_deaths,
+                    "round_swing": ps.round_swing,
+                    "mk_rating": None,  # Phase 7 -- performance page
                     "scraped_at": now,
                     "source_url": source_url,
                     "parser_version": PARSER_VERSION,

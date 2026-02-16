@@ -79,12 +79,16 @@ UPSERT_PLAYER_STATS = """
         kills, deaths, assists, flash_assists, hs_kills, kd_diff,
         adr, kast, fk_diff, rating_2, rating_3,
         kpr, dpr, impact,
+        opening_kills, opening_deaths, multi_kills, clutch_wins,
+        traded_deaths, round_swing, mk_rating,
         scraped_at, updated_at, source_url, parser_version
     ) VALUES (
         :match_id, :map_number, :player_id, :player_name, :team_id,
         :kills, :deaths, :assists, :flash_assists, :hs_kills, :kd_diff,
         :adr, :kast, :fk_diff, :rating_2, :rating_3,
         :kpr, :dpr, :impact,
+        :opening_kills, :opening_deaths, :multi_kills, :clutch_wins,
+        :traded_deaths, :round_swing, :mk_rating,
         :scraped_at, :scraped_at, :source_url, :parser_version
     )
     ON CONFLICT(match_id, map_number, player_id) DO UPDATE SET
@@ -104,6 +108,13 @@ UPSERT_PLAYER_STATS = """
         kpr            = excluded.kpr,
         dpr            = excluded.dpr,
         impact         = excluded.impact,
+        opening_kills  = excluded.opening_kills,
+        opening_deaths = excluded.opening_deaths,
+        multi_kills    = excluded.multi_kills,
+        clutch_wins    = excluded.clutch_wins,
+        traded_deaths  = excluded.traded_deaths,
+        round_swing    = excluded.round_swing,
+        mk_rating      = excluded.mk_rating,
         updated_at     = excluded.scraped_at,
         source_url     = excluded.source_url,
         parser_version = excluded.parser_version
@@ -170,6 +181,41 @@ GET_PENDING_MAP_STATS = """
       AND NOT EXISTS (
         SELECT 1 FROM player_stats ps
         WHERE ps.match_id = m.match_id AND ps.map_number = m.map_number
+      )
+    ORDER BY m.match_id, m.map_number
+    LIMIT ?
+"""
+
+UPSERT_KILL_MATRIX = """
+    INSERT INTO kill_matrix (
+        match_id, map_number, matrix_type, player1_id, player2_id,
+        player1_kills, player2_kills,
+        scraped_at, updated_at, source_url, parser_version
+    ) VALUES (
+        :match_id, :map_number, :matrix_type, :player1_id, :player2_id,
+        :player1_kills, :player2_kills,
+        :scraped_at, :scraped_at, :source_url, :parser_version
+    )
+    ON CONFLICT(match_id, map_number, matrix_type, player1_id, player2_id) DO UPDATE SET
+        player1_kills  = excluded.player1_kills,
+        player2_kills  = excluded.player2_kills,
+        updated_at     = excluded.scraped_at,
+        source_url     = excluded.source_url,
+        parser_version = excluded.parser_version
+"""
+
+GET_PENDING_PERF_ECONOMY = """
+    SELECT m.match_id, m.map_number, m.mapstatsid
+    FROM maps m
+    WHERE m.mapstatsid IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM player_stats ps
+        WHERE ps.match_id = m.match_id AND ps.map_number = m.map_number
+      )
+      AND EXISTS (
+        SELECT 1 FROM player_stats ps
+        WHERE ps.match_id = m.match_id AND ps.map_number = m.map_number
+          AND ps.kpr IS NULL
       )
     ORDER BY m.match_id, m.map_number
     LIMIT ?
@@ -312,6 +358,31 @@ class MatchRepository:
             for row in economy_data:
                 self.conn.execute(UPSERT_ECONOMY, row)
 
+    def upsert_kill_matrix(self, data: dict) -> None:
+        """Insert or update a single kill matrix record."""
+        with self.conn:
+            self.conn.execute(UPSERT_KILL_MATRIX, data)
+
+    def upsert_perf_economy_complete(
+        self,
+        perf_stats: list[dict],
+        economy_data: list[dict],
+        kill_matrix_data: list[dict],
+    ) -> None:
+        """Atomically upsert performance stats, economy data, and kill matrix.
+
+        Updates existing player_stats rows with performance page fields
+        (kpr, dpr, impact, mk_rating), inserts economy rows, and inserts
+        kill matrix rows -- all in a single transaction.
+        """
+        with self.conn:
+            for row in perf_stats:
+                self.conn.execute(UPSERT_PLAYER_STATS, row)
+            for row in economy_data:
+                self.conn.execute(UPSERT_ECONOMY, row)
+            for row in kill_matrix_data:
+                self.conn.execute(UPSERT_KILL_MATRIX, row)
+
     # ------------------------------------------------------------------
     # Read methods
     # ------------------------------------------------------------------
@@ -325,6 +396,25 @@ class MatchRepository:
         """
         rows = self.conn.execute(GET_PENDING_MAP_STATS, (limit,)).fetchall()
         return [dict(r) for r in rows]
+
+    def get_pending_perf_economy(self, limit: int = 10) -> list[dict]:
+        """Return maps that have player_stats but no performance data yet.
+
+        Finds maps where Phase 6 has run (player_stats rows exist) but
+        Phase 7 hasn't (kpr is still NULL on at least one player row).
+        Results are ordered by (match_id, map_number).
+        """
+        rows = self.conn.execute(GET_PENDING_PERF_ECONOMY, (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_valid_round_numbers(self, match_id: int, map_number: int) -> set[int]:
+        """Return set of round numbers that exist in round_history for this map."""
+        rows = self.conn.execute(
+            "SELECT round_number FROM round_history "
+            "WHERE match_id = ? AND map_number = ?",
+            (match_id, map_number),
+        ).fetchall()
+        return {r[0] for r in rows}
 
     def get_match(self, match_id: int) -> dict | None:
         """Return a match as a dict, or None if not found."""
