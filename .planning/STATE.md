@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 7 (Performance + Economy Extraction) in progress. Plans 07-01, 07-02, 07-03 complete. Next: 07-04 (orchestrator).
+**Current focus:** Phase 7 (Performance + Economy Extraction) in progress. Plans 07-01, 07-02, 07-03 complete. Next: 07-04 (orchestrator). 07-02 performance parser now has SUMMARY.
 
 ## Current Position
 
 Phase: 7 of 9 (Performance and Economy Extraction)
 Plan: 3 of 4 in current phase (07-01, 07-02, 07-03 complete)
 Status: In progress
-Last activity: 2026-02-16 -- Completed 07-03-PLAN.md (economy page parser)
+Last activity: 2026-02-16 -- Completed 07-02-PLAN.md (performance page parser)
 
 Progress: [████████--] 88% (22/25 plans with plan files)
 
@@ -36,7 +36,7 @@ Progress: [████████--] 88% (22/25 plans with plan files)
 | 07-perf-economy | 3/4 | ~14 min | ~5 min |
 
 **Recent Trend:**
-- Last 5 plans: 07-03 (4 min), 07-02 (6 min), 07-01 (4 min), 06-03 (24 min), 06-01 (8 min)
+- Last 5 plans: 07-02 (8 min), 07-03 (4 min), 07-01 (4 min), 06-03 (24 min), 06-01 (8 min)
 - Parser-only plans are fast; orchestrator plans take longer due to larger test suites
 
 *Updated after each plan completion*
@@ -123,6 +123,9 @@ Recent decisions affecting current work:
 - [06-03]: MAP_STATS_URL_TEMPLATE uses '/x' as placeholder slug -- HLTV routes by numeric mapstatsid, slug is cosmetic
 - [06-03]: run_map_stats takes no discovery_repo parameter -- pending state derived from data presence (NOT EXISTS player_stats), not scrape_queue status
 - [06-03]: Test seed helper uses direct SQL INSERT with all NOT NULL columns (including updated_at) rather than repository convenience methods
+- [07-02]: Rating detection on performance page uses FusionChart last bar label ('Rating 2.0' or 'Rating 3.0') -- reliable across all 12 samples
+- [07-02]: Kill matrix uses combined regex for both player URL patterns: /player/{id}/ and /stats/players/{id}/
+- [07-02]: Dash '-' displayValue in FusionChart treated as 0.0 (found in sample 206393, player ben1337 ADR)
 - [07-03]: Buy type categories: full_eco/semi_eco/semi_buy/full_buy (canonical names from HLTV trendlines, replacing placeholder eco/force/full/pistol from schema comment)
 - [07-03]: Economy FusionChart uses 'value' directly as equipment value (unlike performance page where 'value' is normalized)
 - [07-03]: Side inference via round_sides dict -- winner's anchorImageUrl determines both teams' CT/T sides per round
@@ -141,5 +144,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 07-03-PLAN.md (economy page parser)
+Stopped at: Completed 07-02-PLAN.md (performance page parser) -- 07-01, 07-02, 07-03 all done, 07-04 next
 Resume file: None
