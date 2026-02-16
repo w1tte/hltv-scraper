@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Match Discovery** - Paginate HLTV results pages to collect all CS2-era match IDs
 - [x] **Phase 5: Match Overview Extraction** - Parse match detail pages for teams, scores, vetoes, rosters
 - [x] **Phase 6: Map Stats Extraction** - Parse per-map overview pages for scoreboards and round history
-- [ ] **Phase 7: Performance and Economy Extraction** - Parse performance and economy sub-pages per map
+- [x] **Phase 7: Performance and Economy Extraction** - Parse performance and economy sub-pages per map
 - [ ] **Phase 8: Data Validation** - Pydantic schema enforcement and cross-field integrity checks
 - [ ] **Phase 9: Pipeline Orchestration** - End-to-end pipeline with state tracking, resume, incremental mode, and logging
 
@@ -140,10 +140,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 07-01-PLAN.md -- Schema migration (new player_stats columns + kill_matrix table), repository extension, Phase 6 orchestrator update
-- [ ] 07-02-PLAN.md -- Performance page parser (FusionChart JSON extraction, Rating 2.0/3.0 handling, kill matrix)
-- [ ] 07-03-PLAN.md -- Economy page parser (per-round equipment values, buy type classification, OT handling)
-- [ ] 07-04-PLAN.md -- Unified performance + economy orchestrator (fetch, store, parse, persist both page types)
+- [x] 07-01-PLAN.md -- Schema migration (new player_stats columns + kill_matrix table), repository extension, Phase 6 orchestrator update
+- [x] 07-02-PLAN.md -- Performance page parser (FusionChart JSON extraction, Rating 2.0/3.0 handling, kill matrix)
+- [x] 07-03-PLAN.md -- Economy page parser (per-round equipment values, buy type classification, OT handling)
+- [x] 07-04-PLAN.md -- Unified performance + economy orchestrator (fetch, store, parse, persist both page types)
 
 ### Phase 8: Data Validation
 **Goal**: Every scraped record is validated against a strict schema before database insertion, catching data quality issues immediately rather than discovering them during analysis
@@ -196,10 +196,10 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 4. Match Discovery | 3/3 | Complete | 2026-02-15 |
 | 5. Match Overview Extraction | 3/3 | Complete | 2026-02-15 |
 | 6. Map Stats Extraction | 3/3 | Complete | 2026-02-16 |
-| 7. Performance and Economy Extraction | 0/4 | Not started | - |
+| 7. Performance and Economy Extraction | 4/4 | Complete | 2026-02-16 |
 | 8. Data Validation | 0/4 | Not started | - |
 | 9. Pipeline Orchestration | 0/6 | Not started | - |
 
 ---
 *Roadmap created: 2026-02-14*
-*Last updated: 2026-02-16 -- Phase 7 planned: consolidated from 6 to 4 plans (HTML analysis redundant with Phase 3 recon)*
+*Last updated: 2026-02-16 -- Phase 7 complete: performance parser, economy parser, orchestrator, all verified*

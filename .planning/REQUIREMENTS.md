@@ -36,13 +36,13 @@
 
 ### Map Stats — Performance
 
-- [ ] **PERF-01**: Scraper extracts detailed player performance data from performance page: KPR, DPR, impact rating, opening kills/deaths, multi-kill rounds
-- [ ] **PERF-02**: Scraper handles both Rating 2.0/2.1 and Rating 3.0 fields depending on match date
+- [x] **PERF-01**: Scraper extracts detailed player performance data from performance page: KPR, DPR, impact rating, opening kills/deaths, multi-kill rounds
+- [x] **PERF-02**: Scraper handles both Rating 2.0/2.1 and Rating 3.0 fields depending on match date
 
 ### Map Stats — Economy
 
-- [ ] **ECON-01**: Scraper extracts per-round economy data: team equipment values per round
-- [ ] **ECON-02**: Scraper extracts round-level buy type classifications (eco, force, full buy)
+- [x] **ECON-01**: Scraper extracts per-round economy data: team equipment values per round
+- [x] **ECON-02**: Scraper extracts round-level buy type classifications (eco, force, full buy)
 
 ### Infrastructure
 
@@ -111,10 +111,10 @@
 | MAPS-01 | Phase 6 | Complete |
 | MAPS-02 | Phase 6 | Complete |
 | MAPS-03 | Phase 6 | Complete |
-| PERF-01 | Phase 7 | Pending |
-| PERF-02 | Phase 7 | Pending |
-| ECON-01 | Phase 7 | Pending |
-| ECON-02 | Phase 7 | Pending |
+| PERF-01 | Phase 7 | Complete |
+| PERF-02 | Phase 7 | Complete |
+| ECON-01 | Phase 7 | Complete |
+| ECON-02 | Phase 7 | Complete |
 | INFR-01 | Phase 1 | Complete |
 | INFR-02 | Phase 1 | Complete |
 | INFR-03 | Phase 1 | Complete |
@@ -135,4 +135,4 @@
 
 ---
 *Requirements defined: 2026-02-14*
-*Last updated: 2026-02-16 -- MAPS-01 through MAPS-03 marked Complete (Phase 6 verified)*
+*Last updated: 2026-02-16 -- PERF-01, PERF-02, ECON-01, ECON-02 marked Complete (Phase 7 verified)*
