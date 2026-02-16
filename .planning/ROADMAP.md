@@ -129,7 +129,7 @@ Plans:
 
 ### Phase 7: Performance and Economy Extraction
 **Goal**: Every played map has its detailed performance metrics and round-by-round economy data extracted from the two remaining sub-pages
-**Depends on**: Phase 2, Phase 5
+**Depends on**: Phase 2, Phase 5, Phase 6
 **Requirements**: PERF-01, PERF-02, ECON-01, ECON-02
 **Success Criteria** (what must be TRUE):
   1. Scraper extracts detailed player performance data from the performance page: KPR, DPR, impact rating, opening kills/deaths, and multi-kill round counts
@@ -137,15 +137,13 @@ Plans:
   3. Scraper extracts per-round economy data including team equipment values for each round
   4. Scraper extracts round-level buy type classifications (eco, force buy, full buy) for both teams
   5. All performance and economy data is persisted to the database linked to the correct match, map, and players
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 07-01: Performance page HTML analysis and selector map
-- [ ] 07-02: Performance data parser (KPR, DPR, impact, openers, multi-kills)
-- [ ] 07-03: Rating version detection and dual-format handling (2.0/2.1 vs 3.0)
-- [ ] 07-04: Economy page HTML analysis and selector map
-- [ ] 07-05: Economy data parser (equipment values, buy types per round)
-- [ ] 07-06: Performance and economy integration (fetch, store, parse, persist)
+- [ ] 07-01-PLAN.md -- Schema migration (new player_stats columns + kill_matrix table), repository extension, Phase 6 orchestrator update
+- [ ] 07-02-PLAN.md -- Performance page parser (FusionChart JSON extraction, Rating 2.0/3.0 handling, kill matrix)
+- [ ] 07-03-PLAN.md -- Economy page parser (per-round equipment values, buy type classification, OT handling)
+- [ ] 07-04-PLAN.md -- Unified performance + economy orchestrator (fetch, store, parse, persist both page types)
 
 ### Phase 8: Data Validation
 **Goal**: Every scraped record is validated against a strict schema before database insertion, catching data quality issues immediately rather than discovering them during analysis
@@ -198,10 +196,10 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 4. Match Discovery | 3/3 | Complete | 2026-02-15 |
 | 5. Match Overview Extraction | 3/3 | Complete | 2026-02-15 |
 | 6. Map Stats Extraction | 3/3 | Complete | 2026-02-16 |
-| 7. Performance and Economy Extraction | 0/6 | Not started | - |
+| 7. Performance and Economy Extraction | 0/4 | Not started | - |
 | 8. Data Validation | 0/4 | Not started | - |
 | 9. Pipeline Orchestration | 0/6 | Not started | - |
 
 ---
 *Roadmap created: 2026-02-14*
-*Last updated: 2026-02-16 -- Phase 6 complete: 3/3 plans executed, goal verified*
+*Last updated: 2026-02-16 -- Phase 7 planned: consolidated from 6 to 4 plans (HTML analysis redundant with Phase 3 recon)*
