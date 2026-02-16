@@ -51,3 +51,6 @@ class ScraperConfig:
 
     # Map stats batch size (maps per batch, not matches)
     map_stats_batch_size: int = 10
+
+    # Maps per batch for performance+economy extraction
+    perf_economy_batch_size: int = 10
