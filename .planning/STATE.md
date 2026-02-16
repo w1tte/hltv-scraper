@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 8 (Data Validation) in progress. Plans 08-01, 08-02 complete.
+**Current focus:** Phase 8 (Data Validation) in progress. Plans 08-01, 08-02, 08-03 complete.
 
 ## Current Position
 
 Phase: 8 of 9 (Data Validation)
-Plan: 2 of 4 in current phase (08-01, 08-02 complete)
+Plan: 3 of 4 in current phase (08-01, 08-02, 08-03 complete)
 Status: In progress
-Last activity: 2026-02-16 -- Completed 08-02-PLAN.md
+Last activity: 2026-02-16 -- Completed 08-03-PLAN.md
 
-Progress: [████████░░] 83% (25/30 plans executed)
+Progress: [████████░░] 87% (26/30 plans executed)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 25
-- Average duration: ~9 min
-- Total execution time: ~3.8 hours
+- Total plans completed: 26
+- Average duration: ~10 min
+- Total execution time: ~4.3 hours
 
 **By Phase:**
 
@@ -34,11 +34,11 @@ Progress: [████████░░] 83% (25/30 plans executed)
 | 05-match-overview | 3/3 | ~20 min | ~7 min |
 | 06-map-stats-extraction | 3/3 | ~34 min | ~11 min |
 | 07-perf-economy | 4/4 | ~34 min | ~9 min |
-| 08-data-validation | 2/4 | ~17 min | ~9 min |
+| 08-data-validation | 3/4 | ~48 min | ~16 min |
 
 **Recent Trend:**
-- Last 5 plans: 08-02 (3 min), 08-01 (14 min), 07-04 (20 min), 07-02 (8 min), 07-03 (4 min)
-- Model + migration plans take longer due to many files created and verification
+- Last 5 plans: 08-03 (31 min), 08-02 (3 min), 08-01 (14 min), 07-04 (20 min), 07-02 (8 min)
+- Integration plans take longer due to full test suite verification (~20 min for 454 tests)
 
 *Updated after each plan completion*
 
@@ -140,6 +140,8 @@ Recent decisions affecting current work:
 - [08-01]: No ConfigDict(strict=True) -- default coercion mode handles int-to-float (e.g., adr=0)
 - [08-01]: warnings.warn() inside validators for soft validation, not logger.warning()
 - [08-02]: validate_and_quarantine wraps exception handling around repo.insert_quarantine to prevent quarantine failures from blocking pipeline
+- [08-03]: Partial data insertion on quarantine -- persist valid maps/vetoes/players even if some fail validation
+- [08-03]: Forfeit detection routes to ForfeitMatchModel (no score consistency) vs MatchModel based on result.is_forfeit
 
 ### Pending Todos
 
@@ -155,5 +157,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 08-02-PLAN.md (validation wrapper + tests)
+Stopped at: Completed 08-03-PLAN.md (orchestrator validation integration)
 Resume file: None
