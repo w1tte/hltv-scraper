@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 9 (Pipeline Orchestration) -- Plans 01-02 complete, Plan 03 next.
+**Current focus:** Phase 9 (Pipeline Orchestration) -- Plans 01-03 complete, Plan 04 next.
 
 ## Current Position
 
 Phase: 9 of 9 (Pipeline Orchestration)
-Plan: 2 of 4 in current phase (09-01, 09-02 complete)
+Plan: 3 of 4 in current phase (09-01, 09-02, 09-03 complete)
 Status: In progress
-Last activity: 2026-02-16 -- Completed 09-02-PLAN.md (incremental discovery)
+Last activity: 2026-02-16 -- Completed 09-03-PLAN.md (pipeline runner and CLI)
 
-Progress: [█████████░] 97% (30/31 plans with plan files)
+Progress: [█████████░] 97% (31/32 plans with plan files)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 30
+- Total plans completed: 31
 - Average duration: ~10 min
-- Total execution time: ~5.5 hours
+- Total execution time: ~5.6 hours
 
 **By Phase:**
 
@@ -35,10 +35,10 @@ Progress: [█████████░] 97% (30/31 plans with plan files)
 | 06-map-stats-extraction | 3/3 | ~34 min | ~11 min |
 | 07-perf-economy | 4/4 | ~34 min | ~9 min |
 | 08-data-validation | 3/3 | ~48 min | ~16 min |
-| 09-pipeline-orchestration | 2/4 | ~23 min | ~12 min |
+| 09-pipeline-orchestration | 3/4 | ~28 min | ~9 min |
 
 **Recent Trend:**
-- Last 5 plans: 09-02 (21 min), 09-01 (2 min), 08-03 (31 min), 08-02 (3 min), 08-01 (14 min)
+- Last 5 plans: 09-03 (5 min), 09-02 (21 min), 09-01 (2 min), 08-03 (31 min), 08-02 (3 min)
 - Integration plans take longer due to full test suite verification (~17 min for 458 tests)
 
 *Updated after each plan completion*
@@ -150,6 +150,9 @@ Recent decisions affecting current work:
 - [09-02]: max_offset NOT renamed to end_offset -- CLI maps --end-offset to config.max_offset
 - [09-02]: shutdown parameter uses duck typing (any object with .is_set) to avoid circular imports
 - [09-02]: In non-incremental mode, new_matches set equal to matches_found at end for consistent stats
+- [09-03]: run_pipeline uses untyped parameters (same as existing orchestrators) to avoid circular imports
+- [09-03]: CLI maps --end-offset to config.max_offset (consistent with 09-02 decision)
+- [09-03]: End-of-run summary printed in try/finally block for guaranteed output on Ctrl+C
 
 ### Pending Todos
 
@@ -165,5 +168,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 09-02-PLAN.md (incremental discovery)
+Stopped at: Completed 09-03-PLAN.md (pipeline runner and CLI)
 Resume file: None
