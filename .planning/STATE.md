@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 8 (Data Validation) verified complete. Next: Phase 9 (Pipeline Orchestration).
+**Current focus:** Phase 9 (Pipeline Orchestration) -- Plan 01 complete, Plan 02 next.
 
 ## Current Position
 
-Phase: 8 of 9 (Data Validation)
-Plan: 3 of 3 in current phase (08-01, 08-02, 08-03 complete)
-Status: Phase verified complete
-Last activity: 2026-02-16 -- Phase 8 verified (4/4 must-haves passed)
+Phase: 9 of 9 (Pipeline Orchestration)
+Plan: 1 of 4 in current phase (09-01 complete)
+Status: In progress
+Last activity: 2026-02-16 -- Completed 09-01-PLAN.md (pipeline infrastructure utilities)
 
-Progress: [█████████░] 90% (28/31 plans with plan files)
+Progress: [█████████░] 94% (29/31 plans with plan files)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 28
+- Total plans completed: 29
 - Average duration: ~10 min
 - Total execution time: ~5.1 hours
 
@@ -35,9 +35,10 @@ Progress: [█████████░] 90% (28/31 plans with plan files)
 | 06-map-stats-extraction | 3/3 | ~34 min | ~11 min |
 | 07-perf-economy | 4/4 | ~34 min | ~9 min |
 | 08-data-validation | 3/3 | ~48 min | ~16 min |
+| 09-pipeline-orchestration | 1/4 | ~2 min | ~2 min |
 
 **Recent Trend:**
-- Last 5 plans: 08-03 (31 min), 08-02 (3 min), 08-01 (14 min), 07-04 (20 min), 07-02 (8 min)
+- Last 5 plans: 09-01 (2 min), 08-03 (31 min), 08-02 (3 min), 08-01 (14 min), 07-04 (20 min)
 - Integration plans take longer due to full test suite verification (~20 min for 454 tests)
 
 *Updated after each plan completion*
@@ -142,6 +143,9 @@ Recent decisions affecting current work:
 - [08-02]: validate_and_quarantine wraps exception handling around repo.insert_quarantine to prevent quarantine failures from blocking pipeline
 - [08-03]: Partial data insertion on quarantine -- persist valid maps/vetoes/players even if some fail validation
 - [08-03]: Forfeit detection routes to ForfeitMatchModel (no score consistency) vs MatchModel based on result.is_forfeit
+- [09-01]: Root logger handlers cleared before adding new ones to prevent duplicate output in tests
+- [09-01]: ShutdownHandler uses signal.signal(SIGINT) for Windows compatibility (not loop.add_signal_handler)
+- [09-01]: ProgressTracker.summary() returns dict; format_summary() returns human-readable string
 
 ### Pending Todos
 
@@ -157,5 +161,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Phase 8 verified complete -- all 3 plans executed, 4/4 must-haves passed. Phase 9 next.
+Stopped at: Completed 09-01-PLAN.md (pipeline infrastructure utilities)
 Resume file: None
