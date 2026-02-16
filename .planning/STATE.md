@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 7 (Performance + Economy Extraction) verified complete. Next: Phase 8 (Data Validation).
+**Current focus:** Phase 8 (Data Validation) in progress. Plan 08-01 complete.
 
 ## Current Position
 
-Phase: 7 of 9 (Performance and Economy Extraction)
-Plan: 4 of 4 in current phase (07-01, 07-02, 07-03, 07-04 complete)
-Status: Phase verified complete
-Last activity: 2026-02-16 -- Phase 7 verified (5/5 must-haves passed)
+Phase: 8 of 9 (Data Validation)
+Plan: 1 of 4 in current phase (08-01 complete)
+Status: In progress
+Last activity: 2026-02-16 -- Completed 08-01-PLAN.md
 
-Progress: [██████████] 100% (25/25 plans with plan files)
+Progress: [████████░░] 80% (24/30 plans executed)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 23
+- Total plans completed: 24
 - Average duration: ~9 min
-- Total execution time: ~3.6 hours
+- Total execution time: ~3.8 hours
 
 **By Phase:**
 
@@ -34,10 +34,11 @@ Progress: [██████████] 100% (25/25 plans with plan files)
 | 05-match-overview | 3/3 | ~20 min | ~7 min |
 | 06-map-stats-extraction | 3/3 | ~34 min | ~11 min |
 | 07-perf-economy | 4/4 | ~34 min | ~9 min |
+| 08-data-validation | 1/4 | ~14 min | ~14 min |
 
 **Recent Trend:**
-- Last 5 plans: 07-04 (20 min), 07-02 (8 min), 07-03 (4 min), 07-01 (4 min), 06-03 (24 min)
-- Orchestrator plans take longer due to larger test suites and multi-module integration
+- Last 5 plans: 08-01 (14 min), 07-04 (20 min), 07-02 (8 min), 07-03 (4 min), 07-01 (4 min)
+- Model + migration plans take longer due to many files created and verification
 
 *Updated after each plan completion*
 
@@ -135,6 +136,9 @@ Recent decisions affecting current work:
 - [07-04]: Read-merge-write for UPSERT: reads existing player_stats to preserve Phase 6 columns, adds Phase 7 fields (kpr, dpr, impact, mk_rating)
 - [07-04]: Economy team_id resolution from match_data team names with positional fallback for FusionChart name mismatches
 - [07-04]: Economy FK filtering via get_valid_round_numbers() -- only inserts economy rows for rounds present in round_history
+- [08-01]: updated_at defaults to "" in all Pydantic models -- SQL handles it via excluded.scraped_at
+- [08-01]: No ConfigDict(strict=True) -- default coercion mode handles int-to-float (e.g., adr=0)
+- [08-01]: warnings.warn() inside validators for soft validation, not logger.warning()
 
 ### Pending Todos
 
@@ -150,5 +154,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Phase 7 verified complete -- all 4 plans executed, 5/5 must-haves passed. Phase 8 next.
+Stopped at: Completed 08-01-PLAN.md (validation models + quarantine infrastructure)
 Resume file: None
