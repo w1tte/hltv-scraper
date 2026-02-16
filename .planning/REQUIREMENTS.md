@@ -59,8 +59,8 @@
 
 - [x] **STOR-01**: SQLite database with relational schema: matches, maps, player_stats, round_history, economy tables
 - [x] **STOR-02**: Store raw HTML to disk before parsing, enabling parser fixes without re-fetching
-- [ ] **STOR-03**: Pydantic models validate every scraped record before database insertion
-- [ ] **STOR-04**: Cross-field validation: player counts, round totals matching scores, rating bounds
+- [x] **STOR-03**: Pydantic models validate every scraped record before database insertion
+- [x] **STOR-04**: Cross-field validation: player counts, round totals matching scores, rating bounds
 
 ## v2 Requirements
 
@@ -125,8 +125,8 @@
 | INFR-08 | Phase 9 | Pending |
 | STOR-01 | Phase 2 | Complete |
 | STOR-02 | Phase 2 | Complete |
-| STOR-03 | Phase 8 | Pending |
-| STOR-04 | Phase 8 | Pending |
+| STOR-03 | Phase 8 | Complete |
+| STOR-04 | Phase 8 | Complete |
 
 **Coverage:**
 - v1 requirements: 33 total
@@ -135,4 +135,4 @@
 
 ---
 *Requirements defined: 2026-02-14*
-*Last updated: 2026-02-16 -- PERF-01, PERF-02, ECON-01, ECON-02 marked Complete (Phase 7 verified)*
+*Last updated: 2026-02-16 -- STOR-03, STOR-04 marked Complete (Phase 8 verified)*

@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Match Overview Extraction** - Parse match detail pages for teams, scores, vetoes, rosters
 - [x] **Phase 6: Map Stats Extraction** - Parse per-map overview pages for scoreboards and round history
 - [x] **Phase 7: Performance and Economy Extraction** - Parse performance and economy sub-pages per map
-- [ ] **Phase 8: Data Validation** - Pydantic schema enforcement and cross-field integrity checks
+- [x] **Phase 8: Data Validation** - Pydantic schema enforcement and cross-field integrity checks
 - [ ] **Phase 9: Pipeline Orchestration** - End-to-end pipeline with state tracking, resume, incremental mode, and logging
 
 ## Phase Details
@@ -157,9 +157,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 08-01-PLAN.md -- Pydantic models for all entity types (match, map, player_stats, round_history, economy, veto, match_player, kill_matrix) plus quarantine infrastructure
-- [ ] 08-02-PLAN.md -- Validation wrapper (validate_and_quarantine, batch checks) and comprehensive model/validation tests
-- [ ] 08-03-PLAN.md -- Wire validation into all 3 orchestrators and update orchestrator tests
+- [x] 08-01-PLAN.md -- Pydantic models for all entity types (match, map, player_stats, round_history, economy, veto, match_player, kill_matrix) plus quarantine infrastructure
+- [x] 08-02-PLAN.md -- Validation wrapper (validate_and_quarantine, batch checks) and comprehensive model/validation tests
+- [x] 08-03-PLAN.md -- Wire validation into all 3 orchestrators and update orchestrator tests
 
 ### Phase 9: Pipeline Orchestration
 **Goal**: The scraper runs as a complete, resumable pipeline that can bulk-scrape historical data and incrementally pick up new matches, with full visibility into progress and state
@@ -196,9 +196,9 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 5. Match Overview Extraction | 3/3 | Complete | 2026-02-15 |
 | 6. Map Stats Extraction | 3/3 | Complete | 2026-02-16 |
 | 7. Performance and Economy Extraction | 4/4 | Complete | 2026-02-16 |
-| 8. Data Validation | 0/3 | Not started | - |
+| 8. Data Validation | 3/3 | Complete | 2026-02-16 |
 | 9. Pipeline Orchestration | 0/6 | Not started | - |
 
 ---
 *Roadmap created: 2026-02-14*
-*Last updated: 2026-02-16 -- Phase 8 planned: 3 plans in 3 waves (models+quarantine, validation wrapper+tests, orchestrator integration)*
+*Last updated: 2026-02-16 -- Phase 8 complete: 3 plans, 4/4 must-haves verified*
