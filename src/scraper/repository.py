@@ -238,6 +238,16 @@ UPSERT_MATCH_PLAYER = """
         parser_version = excluded.parser_version
 """
 
+INSERT_QUARANTINE = """
+    INSERT INTO quarantine (
+        entity_type, match_id, map_number,
+        raw_data, error_details, quarantined_at, resolved
+    ) VALUES (
+        :entity_type, :match_id, :map_number,
+        :raw_data, :error_details, :quarantined_at, :resolved
+    )
+"""
+
 
 # ---------------------------------------------------------------------------
 # Repository class
@@ -461,3 +471,23 @@ class MatchRepository:
     def count_matches(self) -> int:
         """Return the total number of match records."""
         return self.conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
+
+    # ------------------------------------------------------------------
+    # Quarantine methods
+    # ------------------------------------------------------------------
+
+    def insert_quarantine(self, data: dict) -> None:
+        """Insert a quarantine record for a failed validation.
+
+        Args:
+            data: Dict with keys: entity_type, match_id, map_number,
+                  raw_data, error_details, quarantined_at, resolved.
+        """
+        with self.conn:
+            self.conn.execute(INSERT_QUARANTINE, data)
+
+    def get_quarantine_count(self) -> int:
+        """Return the total number of quarantine records."""
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM quarantine"
+        ).fetchone()[0]
