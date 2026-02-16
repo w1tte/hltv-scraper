@@ -67,6 +67,34 @@ class PerformanceData:
     teams: list[TeamOverview]
 
 
+def _safe_float(value: str, default: float = 0.0) -> float:
+    """Parse a float from a displayValue string, handling '-' (dash) as default.
+
+    HLTV uses '-' when a stat is unavailable (e.g., ADR for a player with 0 damage).
+    """
+    cleaned = value.rstrip("%").lstrip("+").strip()
+    if not cleaned or cleaned == "-":
+        return default
+    try:
+        return float(cleaned)
+    except ValueError:
+        return default
+
+
+def _safe_float_signed(value: str, default: float = 0.0) -> float:
+    """Parse a signed float from a displayValue like '+12.23%' or '-1.93%'.
+
+    Preserves sign. Handles '-' (dash) as default.
+    """
+    cleaned = value.rstrip("%").strip()
+    if not cleaned or cleaned == "-":
+        return default
+    try:
+        return float(cleaned)
+    except ValueError:
+        return default
+
+
 # Mapping from kill matrix container ID to matrix_type
 _MATRIX_TYPE_MAP: dict[str, str] = {
     "ALL-content": "all",
@@ -194,25 +222,25 @@ def _parse_player_cards(
 
         bar_map = {bar["label"]: bar["displayValue"] for bar in bars}
 
-        # Common metrics
+        # Common metrics (use _safe_float to handle '-' dash values)
         try:
-            kpr = float(bar_map["KPR"])
-            dpr = float(bar_map["DPR"])
-            kast = float(bar_map["KAST"].rstrip("%"))
-            adr = float(bar_map["ADR"])
-        except (KeyError, ValueError) as e:
-            logger.warning("Missing common metric for player %s: %s", player_name, e)
+            kpr = _safe_float(bar_map["KPR"])
+            dpr = _safe_float(bar_map["DPR"])
+            kast = _safe_float(bar_map["KAST"].rstrip("%"))
+            adr = _safe_float(bar_map["ADR"])
+        except KeyError as e:
+            logger.warning("Missing common metric key for player %s: %s", player_name, e)
             continue
 
         # Version-specific metrics
         if rating_version == "3.0":
             try:
-                rating = float(bar_map["Rating 3.0"])
-                mk_rating = float(bar_map["MK rating"])
-                round_swing = float(bar_map["Swing"].rstrip("%"))
-            except (KeyError, ValueError) as e:
+                rating = _safe_float(bar_map["Rating 3.0"])
+                mk_rating = _safe_float(bar_map["MK rating"])
+                round_swing = _safe_float_signed(bar_map["Swing"])
+            except KeyError as e:
                 logger.warning(
-                    "Missing Rating 3.0 metric for player %s: %s", player_name, e
+                    "Missing Rating 3.0 metric key for player %s: %s", player_name, e
                 )
                 continue
 
@@ -234,11 +262,11 @@ def _parse_player_cards(
         else:
             # Rating 2.0
             try:
-                rating = float(bar_map["Rating 2.0"])
-                impact = float(bar_map["Impact"])
-            except (KeyError, ValueError) as e:
+                rating = _safe_float(bar_map["Rating 2.0"])
+                impact = _safe_float(bar_map["Impact"])
+            except KeyError as e:
                 logger.warning(
-                    "Missing Rating 2.0 metric for player %s: %s", player_name, e
+                    "Missing Rating 2.0 metric key for player %s: %s", player_name, e
                 )
                 continue
 
