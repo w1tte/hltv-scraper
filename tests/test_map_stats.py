@@ -7,7 +7,7 @@ fetch-store-parse-persist pipeline without needing Chrome.
 
 import gzip
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -264,3 +264,42 @@ class TestRunMapStats:
         assert "parsed" in stats
         assert "failed" in stats
         assert "fetch_errors" in stats
+
+    @pytest.mark.asyncio
+    async def test_map_stats_quarantines_invalid_stats(
+        self, mock_client, match_repo, storage, config
+    ):
+        """Player with kills=-1 is quarantined; other valid players still persist."""
+        html = load_sample(SAMPLE_FILENAME)
+        seed_match_with_maps(match_repo, SAMPLE_MATCH_ID, [SAMPLE_MAPSTATSID])
+        mock_client.fetch.return_value = html
+
+        # Patch parser to corrupt one player's kills to -1
+        from scraper.map_stats_parser import parse_map_stats as real_parse
+
+        def patched_parse(html_str, mapstatsid):
+            result = real_parse(html_str, mapstatsid)
+            # Corrupt first player's kills to an invalid value
+            object.__setattr__(result.players[0], "kills", -1)
+            return result
+
+        with patch(
+            "scraper.map_stats.parse_map_stats",
+            side_effect=patched_parse,
+        ):
+            stats = await run_map_stats(mock_client, match_repo, storage, config)
+
+        # Map should still parse (partial data persisted)
+        assert stats["parsed"] == 1
+        assert stats["failed"] == 0
+
+        # 9 valid players persisted (1 quarantined)
+        player_stats = match_repo.get_player_stats(SAMPLE_MATCH_ID, map_number=1)
+        assert len(player_stats) == 9
+
+        # Quarantine table has the invalid player
+        rows = match_repo.conn.execute(
+            "SELECT * FROM quarantine WHERE match_id = ? AND entity_type = ?",
+            (SAMPLE_MATCH_ID, "PlayerStatsModel"),
+        ).fetchall()
+        assert len(rows) == 1

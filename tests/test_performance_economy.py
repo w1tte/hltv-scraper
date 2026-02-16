@@ -8,7 +8,7 @@ without needing Chrome.
 
 import gzip
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -636,3 +636,63 @@ class TestAlreadyProcessed:
             mock_client, match_repo, storage, config
         )
         assert stats["batch_size"] == 0
+
+
+class TestQuarantine:
+    """Test that invalid records are quarantined without halting the pipeline."""
+
+    @pytest.mark.asyncio
+    async def test_perf_economy_quarantines_invalid_economy(
+        self, mock_client, match_repo, storage, config
+    ):
+        """Economy with invalid buy_type is quarantined; perf stats and kill matrix still persist."""
+        seed_match_with_map_stats(match_repo, SAMPLE_MATCH_ID, SAMPLE_MAPSTATSID)
+
+        # Patch economy parser to inject an invalid buy_type on first round
+        from scraper.economy_parser import parse_economy as real_parse_econ
+
+        def patched_parse_econ(html_str, mapstatsid):
+            result = real_parse_econ(html_str, mapstatsid)
+            # Corrupt first round's buy_type to an invalid value
+            if result.rounds:
+                object.__setattr__(result.rounds[0], "buy_type", "pistol")
+            return result
+
+        with patch(
+            "scraper.performance_economy.parse_economy",
+            side_effect=patched_parse_econ,
+        ):
+            stats = await run_performance_economy(
+                mock_client, match_repo, storage, config
+            )
+
+        # Map should still parse successfully (partial economy data)
+        assert stats["parsed"] == 1
+        assert stats["failed"] == 0
+
+        # Player stats still populated (kpr non-null)
+        rows = match_repo.get_player_stats(SAMPLE_MATCH_ID, map_number=1)
+        assert len(rows) == 10
+        for row in rows:
+            assert row["kpr"] is not None
+
+        # Kill matrix still persisted
+        km_rows = match_repo.conn.execute(
+            "SELECT COUNT(*) FROM kill_matrix WHERE match_id = ? AND map_number = ?",
+            (SAMPLE_MATCH_ID, 1),
+        ).fetchone()[0]
+        assert km_rows > 0
+
+        # Quarantine table has the invalid economy record
+        q_rows = match_repo.conn.execute(
+            "SELECT * FROM quarantine WHERE match_id = ? AND entity_type = ?",
+            (SAMPLE_MATCH_ID, "EconomyModel"),
+        ).fetchall()
+        assert len(q_rows) >= 1
+
+        # Economy table still has rows (the valid ones)
+        econ_count = match_repo.conn.execute(
+            "SELECT COUNT(*) FROM economy WHERE match_id = ? AND map_number = ?",
+            (SAMPLE_MATCH_ID, 1),
+        ).fetchone()[0]
+        assert econ_count > 0

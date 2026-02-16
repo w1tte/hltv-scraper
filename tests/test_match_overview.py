@@ -7,7 +7,7 @@ fetch-store-parse-persist pipeline without needing Chrome.
 
 import gzip
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -316,3 +316,46 @@ class TestRunMatchOverview:
         assert 2000 <= int(year) <= 2030
         assert 1 <= int(month) <= 12
         assert 1 <= int(day) <= 31
+
+    @pytest.mark.asyncio
+    async def test_match_overview_quarantines_invalid_match(
+        self, mock_client, match_repo, discovery_repo, storage, config
+    ):
+        """Match with team1_id==team2_id fails validation, gets quarantined."""
+        sample = SAMPLE_2389951
+        html = load_sample(sample["filename"])
+        seed_pending(discovery_repo, sample["match_id"], sample["url"])
+        mock_client.fetch.return_value = html
+
+        # Patch the parser to return a result where team1_id == team2_id
+        from scraper.match_parser import parse_match_overview as real_parse
+
+        def patched_parse(html_str, match_id):
+            result = real_parse(html_str, match_id)
+            # Mutate to create invalid data (same team IDs)
+            object.__setattr__(result, "team2_id", result.team1_id)
+            return result
+
+        with patch(
+            "scraper.match_overview.parse_match_overview",
+            side_effect=patched_parse,
+        ):
+            stats = await run_match_overview(
+                mock_client, match_repo, discovery_repo, storage, config
+            )
+
+        # Match should fail validation
+        assert stats["failed"] == 1
+        assert stats["parsed"] == 0
+
+        # Queue entry marked as failed
+        entry = discovery_repo.get_queue_entry(sample["match_id"])
+        assert entry["status"] == "failed"
+
+        # Quarantine table has a record
+        rows = match_repo.conn.execute(
+            "SELECT * FROM quarantine WHERE match_id = ?",
+            (sample["match_id"],),
+        ).fetchall()
+        assert len(rows) >= 1
+        assert rows[0]["entity_type"] == "MatchModel"
