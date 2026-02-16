@@ -15,6 +15,9 @@ dependencies = [
     "pydantic>=2.10",
 ]
 
+[project.scripts]
+hltv-scraper = "scraper.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
