@@ -154,13 +154,12 @@ Plans:
   2. Cross-field validation catches inconsistencies: player count per team equals 5, round totals match the final score, rating values fall within expected bounds
   3. Validation failures are logged with enough detail to identify the problematic match/map and the specific field that failed
   4. Invalid records do not silently enter the database -- they are rejected and flagged for investigation
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 08-01: Pydantic models for all data entities (match, map, player_stats, round, economy)
-- [ ] 08-02: Cross-field validation rules (player counts, round totals, rating bounds)
-- [ ] 08-03: Validation integration into parsing pipeline with error reporting
-- [ ] 08-04: Validation against sample of real scraped data (edge cases: forfeits, overtime, walkovers)
+- [ ] 08-01-PLAN.md -- Pydantic models for all entity types (match, map, player_stats, round_history, economy, veto, match_player, kill_matrix) plus quarantine infrastructure
+- [ ] 08-02-PLAN.md -- Validation wrapper (validate_and_quarantine, batch checks) and comprehensive model/validation tests
+- [ ] 08-03-PLAN.md -- Wire validation into all 3 orchestrators and update orchestrator tests
 
 ### Phase 9: Pipeline Orchestration
 **Goal**: The scraper runs as a complete, resumable pipeline that can bulk-scrape historical data and incrementally pick up new matches, with full visibility into progress and state
@@ -197,9 +196,9 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 5. Match Overview Extraction | 3/3 | Complete | 2026-02-15 |
 | 6. Map Stats Extraction | 3/3 | Complete | 2026-02-16 |
 | 7. Performance and Economy Extraction | 4/4 | Complete | 2026-02-16 |
-| 8. Data Validation | 0/4 | Not started | - |
+| 8. Data Validation | 0/3 | Not started | - |
 | 9. Pipeline Orchestration | 0/6 | Not started | - |
 
 ---
 *Roadmap created: 2026-02-14*
-*Last updated: 2026-02-16 -- Phase 7 complete: performance parser, economy parser, orchestrator, all verified*
+*Last updated: 2026-02-16 -- Phase 8 planned: 3 plans in 3 waves (models+quarantine, validation wrapper+tests, orchestrator integration)*
