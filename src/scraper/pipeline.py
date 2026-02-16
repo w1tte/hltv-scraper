@@ -1,7 +1,11 @@
-"""Pipeline utility classes for the HLTV scraper.
+"""Pipeline orchestration for the HLTV scraper.
 
-Provides three building blocks used by the pipeline runner (added in a
-later plan):
+Provides the ``run_pipeline`` async function that wires all four stage
+orchestrators (discovery, match overview, map stats, performance/economy)
+into a sequential loop-until-done pipeline with shutdown checking and
+consecutive failure tracking.
+
+Also provides three utility building blocks:
 
 * **ShutdownHandler** -- cross-platform graceful Ctrl+C via
   ``signal.signal(SIGINT, ...)``.  First press sets a flag; second press
@@ -16,6 +20,11 @@ import asyncio
 import logging
 import signal
 import time
+
+from scraper.discovery import run_discovery
+from scraper.match_overview import run_match_overview
+from scraper.map_stats import run_map_stats
+from scraper.performance_economy import run_performance_economy
 
 logger = logging.getLogger(__name__)
 
@@ -164,3 +173,151 @@ class ProgressTracker:
             f"  Wall time : {int(minutes)}m {seconds:.1f}s",
         ]
         return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Pipeline runner
+# ---------------------------------------------------------------------------
+
+async def run_pipeline(
+    client,              # HLTVClient
+    match_repo,          # MatchRepository
+    discovery_repo,      # DiscoveryRepository
+    storage,             # HtmlStorage
+    config,              # ScraperConfig
+    shutdown,            # ShutdownHandler
+    incremental: bool = True,
+    force_rescrape: bool = False,
+) -> dict:
+    """Run the full scraper pipeline: discovery -> overview -> map stats -> perf/economy.
+
+    Each stage runs in a loop until no pending work remains (or shutdown
+    is requested, or consecutive failures exceed the threshold).
+
+    Uses untyped parameters (same pattern as the individual orchestrators)
+    to avoid circular imports.
+
+    Args:
+        client: HLTVClient instance (must be started).
+        match_repo: MatchRepository instance.
+        discovery_repo: DiscoveryRepository instance.
+        storage: HtmlStorage instance.
+        config: ScraperConfig instance.
+        shutdown: ShutdownHandler instance.
+        incremental: If True (default), discovery stops when all matches
+            on a page are already known.
+        force_rescrape: If True, resets all scraped matches to pending
+            before running.
+
+    Returns:
+        Dict with per-stage results, halt status, and summary.
+    """
+    failure_tracker = ConsecutiveFailureTracker(config.consecutive_failure_threshold)
+    progress = ProgressTracker(total=0)
+
+    results = {
+        "discovery": {},
+        "overview": {"parsed": 0, "failed": 0},
+        "map_stats": {"parsed": 0, "failed": 0},
+        "perf_economy": {"parsed": 0, "failed": 0},
+        "halted": False,
+        "halt_reason": None,
+    }
+
+    # Auto-reset failed matches so they get another chance
+    if not force_rescrape:
+        reset_count = discovery_repo.reset_failed_matches()
+        if reset_count > 0:
+            logger.info("Reset %d failed matches to pending", reset_count)
+
+    # ---------------------------------------------------------------
+    # Stage 1: Discovery
+    # ---------------------------------------------------------------
+    if not shutdown.is_set:
+        logger.info("=== Stage 1: Discovery ===")
+        try:
+            discovery_stats = await run_discovery(
+                client, discovery_repo, storage, config,
+                incremental=incremental, shutdown=shutdown,
+            )
+            results["discovery"] = discovery_stats
+            progress.log_stage("Discovery", discovery_stats)
+            failure_tracker.record_success()
+        except Exception as exc:
+            logger.error("Discovery failed: %s", exc)
+            if failure_tracker.record_failure():
+                results["halted"] = True
+                results["halt_reason"] = f"Discovery failed: {exc}"
+                results["summary"] = progress.summary()
+                return results
+
+    # ---------------------------------------------------------------
+    # Stage 2: Match Overview -- loop until no pending work
+    # ---------------------------------------------------------------
+    if not shutdown.is_set:
+        logger.info("=== Stage 2: Match Overview ===")
+    while not shutdown.is_set and not failure_tracker.should_halt:
+        stats = await run_match_overview(
+            client, match_repo, discovery_repo, storage, config,
+        )
+        results["overview"]["parsed"] += stats["parsed"]
+        results["overview"]["failed"] += stats["failed"]
+        if stats["batch_size"] == 0:
+            break
+        if stats["parsed"] > 0:
+            failure_tracker.record_success()
+        if stats["fetch_errors"] > 0 or (stats["failed"] > 0 and stats["parsed"] == 0):
+            if failure_tracker.record_failure():
+                results["halted"] = True
+                results["halt_reason"] = "Consecutive failures exceeded threshold (overview stage)"
+                break
+        progress.log_stage("Match overview batch", stats)
+
+    # ---------------------------------------------------------------
+    # Stage 3: Map Stats -- loop until no pending work
+    # ---------------------------------------------------------------
+    if not shutdown.is_set and not failure_tracker.should_halt:
+        logger.info("=== Stage 3: Map Stats ===")
+    while not shutdown.is_set and not failure_tracker.should_halt:
+        stats = await run_map_stats(client, match_repo, storage, config)
+        results["map_stats"]["parsed"] += stats["parsed"]
+        results["map_stats"]["failed"] += stats["failed"]
+        if stats["batch_size"] == 0:
+            break
+        if stats["parsed"] > 0:
+            failure_tracker.record_success()
+        if stats["fetch_errors"] > 0 or (stats["failed"] > 0 and stats["parsed"] == 0):
+            if failure_tracker.record_failure():
+                results["halted"] = True
+                results["halt_reason"] = "Consecutive failures exceeded threshold (map stats stage)"
+                break
+        progress.log_stage("Map stats batch", stats)
+
+    # ---------------------------------------------------------------
+    # Stage 4: Performance + Economy -- loop until no pending work
+    # ---------------------------------------------------------------
+    if not shutdown.is_set and not failure_tracker.should_halt:
+        logger.info("=== Stage 4: Performance + Economy ===")
+    while not shutdown.is_set and not failure_tracker.should_halt:
+        stats = await run_performance_economy(client, match_repo, storage, config)
+        results["perf_economy"]["parsed"] += stats["parsed"]
+        results["perf_economy"]["failed"] += stats["failed"]
+        if stats["batch_size"] == 0:
+            break
+        if stats["parsed"] > 0:
+            failure_tracker.record_success()
+        if stats["fetch_errors"] > 0 or (stats["failed"] > 0 and stats["parsed"] == 0):
+            if failure_tracker.record_failure():
+                results["halted"] = True
+                results["halt_reason"] = "Consecutive failures exceeded threshold (perf/economy stage)"
+                break
+        progress.log_stage("Perf/economy batch", stats)
+
+    # ---------------------------------------------------------------
+    # Summary
+    # ---------------------------------------------------------------
+    results["summary"] = progress.summary()
+    if shutdown.is_set:
+        results["halted"] = True
+        results["halt_reason"] = "User requested shutdown (Ctrl+C)"
+    return results
