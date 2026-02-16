@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 9 (Pipeline Orchestration) -- Plan 01 complete, Plan 02 next.
+**Current focus:** Phase 9 (Pipeline Orchestration) -- Plans 01-02 complete, Plan 03 next.
 
 ## Current Position
 
 Phase: 9 of 9 (Pipeline Orchestration)
-Plan: 1 of 4 in current phase (09-01 complete)
+Plan: 2 of 4 in current phase (09-01, 09-02 complete)
 Status: In progress
-Last activity: 2026-02-16 -- Completed 09-01-PLAN.md (pipeline infrastructure utilities)
+Last activity: 2026-02-16 -- Completed 09-02-PLAN.md (incremental discovery)
 
-Progress: [█████████░] 94% (29/31 plans with plan files)
+Progress: [█████████░] 97% (30/31 plans with plan files)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 29
+- Total plans completed: 30
 - Average duration: ~10 min
-- Total execution time: ~5.1 hours
+- Total execution time: ~5.5 hours
 
 **By Phase:**
 
@@ -35,11 +35,11 @@ Progress: [█████████░] 94% (29/31 plans with plan files)
 | 06-map-stats-extraction | 3/3 | ~34 min | ~11 min |
 | 07-perf-economy | 4/4 | ~34 min | ~9 min |
 | 08-data-validation | 3/3 | ~48 min | ~16 min |
-| 09-pipeline-orchestration | 1/4 | ~2 min | ~2 min |
+| 09-pipeline-orchestration | 2/4 | ~23 min | ~12 min |
 
 **Recent Trend:**
-- Last 5 plans: 09-01 (2 min), 08-03 (31 min), 08-02 (3 min), 08-01 (14 min), 07-04 (20 min)
-- Integration plans take longer due to full test suite verification (~20 min for 454 tests)
+- Last 5 plans: 09-02 (21 min), 09-01 (2 min), 08-03 (31 min), 08-02 (3 min), 08-01 (14 min)
+- Integration plans take longer due to full test suite verification (~17 min for 458 tests)
 
 *Updated after each plan completion*
 
@@ -146,6 +146,10 @@ Recent decisions affecting current work:
 - [09-01]: Root logger handlers cleared before adding new ones to prevent duplicate output in tests
 - [09-01]: ShutdownHandler uses signal.signal(SIGINT) for Windows compatibility (not loop.add_signal_handler)
 - [09-01]: ProgressTracker.summary() returns dict; format_summary() returns human-readable string
+- [09-02]: count_new_matches called BEFORE persist_page to get accurate new-match count (UPSERT would corrupt it)
+- [09-02]: max_offset NOT renamed to end_offset -- CLI maps --end-offset to config.max_offset
+- [09-02]: shutdown parameter uses duck typing (any object with .is_set) to avoid circular imports
+- [09-02]: In non-incremental mode, new_matches set equal to matches_found at end for consistent stats
 
 ### Pending Todos
 
@@ -161,5 +165,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 09-01-PLAN.md (pipeline infrastructure utilities)
+Stopped at: Completed 09-02-PLAN.md (incremental discovery)
 Resume file: None
