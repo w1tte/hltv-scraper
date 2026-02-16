@@ -54,3 +54,7 @@ class ScraperConfig:
 
     # Maps per batch for performance+economy extraction
     perf_economy_batch_size: int = 10
+
+    # Pipeline orchestration
+    start_offset: int = 0              # Start offset for results pagination
+    consecutive_failure_threshold: int = 3  # Halt pipeline after N consecutive failures
