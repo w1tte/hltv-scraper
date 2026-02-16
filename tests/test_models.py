@@ -15,7 +15,6 @@ from scraper.models import (
     KillMatrixModel,
     MapModel,
     MatchModel,
-    MatchPlayerModel,
     PlayerStatsModel,
     RoundHistoryModel,
     VetoModel,
@@ -85,11 +84,9 @@ def valid_player_stats() -> dict:
         "adr": 95.5,
         "kast": 72.0,
         "fk_diff": 2,
-        "rating_2": None,
-        "rating_3": 1.35,
+        "rating": 1.35,
         "kpr": 0.85,
         "dpr": 0.55,
-        "impact": 1.2,
         "opening_kills": 5,
         "opening_deaths": 3,
         "multi_kills": 3,
@@ -135,18 +132,6 @@ def valid_veto() -> dict:
         "team_name": "Team A",
         "action": "removed",
         "map_name": "de_dust2",
-        **PROVENANCE,
-    }
-
-
-@pytest.fixture
-def valid_match_player() -> dict:
-    return {
-        "match_id": 100,
-        "player_id": 1001,
-        "player_name": "s1mple",
-        "team_id": 1,
-        "team_num": 1,
         **PROVENANCE,
     }
 
@@ -297,11 +282,11 @@ class TestPlayerStatsModel:
             PlayerStatsModel.model_validate(valid_player_stats)
 
     def test_unusual_rating_warns(self, valid_player_stats):
-        valid_player_stats["rating_3"] = 4.5
+        valid_player_stats["rating"] = 4.5
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             PlayerStatsModel.model_validate(valid_player_stats)
-        rating_warns = [w for w in caught if "rating_3" in str(w.message)]
+        rating_warns = [w for w in caught if "rating" in str(w.message)]
         assert len(rating_warns) >= 1
 
     def test_unusual_adr_warns(self, valid_player_stats):
@@ -316,12 +301,10 @@ class TestPlayerStatsModel:
         # Phase 7 fields can be None when not yet scraped
         valid_player_stats["kpr"] = None
         valid_player_stats["dpr"] = None
-        valid_player_stats["impact"] = None
         valid_player_stats["mk_rating"] = None
         model = PlayerStatsModel.model_validate(valid_player_stats)
         assert model.kpr is None
         assert model.dpr is None
-        assert model.impact is None
 
 
 # ===================================================================
@@ -375,22 +358,6 @@ class TestVetoModel:
         valid_veto["action"] = "banned"
         with pytest.raises(ValidationError, match="action"):
             VetoModel.model_validate(valid_veto)
-
-
-# ===================================================================
-# MatchPlayerModel tests
-# ===================================================================
-
-
-class TestMatchPlayerModel:
-    def test_valid_match_player(self, valid_match_player):
-        model = MatchPlayerModel.model_validate(valid_match_player)
-        assert model.team_num == 1
-
-    def test_invalid_team_num(self, valid_match_player):
-        valid_match_player["team_num"] = 3
-        with pytest.raises(ValidationError, match="team_num"):
-            MatchPlayerModel.model_validate(valid_match_player)
 
 
 # ===================================================================

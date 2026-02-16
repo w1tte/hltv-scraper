@@ -115,51 +115,6 @@ class HtmlStorage:
             return []
         return sorted(match_dir.glob("*.html.gz"))
 
-    # ------------------------------------------------------------------
-    # Results listing page methods (offset-based, separate from matches)
-    # ------------------------------------------------------------------
-
-    def save_results_page(self, html: str, offset: int) -> Path:
-        """Save a results listing page HTML to disk.
-
-        Results pages are stored by offset under ``base_dir/results/``,
-        separate from the match-centric ``matches/`` hierarchy.
-
-        Args:
-            html: Raw HTML string to save.
-            offset: Results page offset (0, 100, 200, ...).
-
-        Returns:
-            Path to the written file.
-        """
-        file_path = self.base_dir / "results" / f"offset-{offset}.html.gz"
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_bytes(gzip.compress(html.encode("utf-8")))
-        return file_path
-
-    def load_results_page(self, offset: int) -> str:
-        """Load a results listing page HTML from disk.
-
-        Args:
-            offset: Results page offset (0, 100, 200, ...).
-
-        Returns:
-            The decompressed HTML string.
-
-        Raises:
-            FileNotFoundError: If no saved page exists for this offset.
-        """
-        file_path = self.base_dir / "results" / f"offset-{offset}.html.gz"
-        if not file_path.exists():
-            raise FileNotFoundError(
-                f"No saved results page for offset {offset}: {file_path}"
-            )
-        return gzip.decompress(file_path.read_bytes()).decode("utf-8")
-
-    def results_page_exists(self, offset: int) -> bool:
-        """Check whether a results listing page has been saved."""
-        return (self.base_dir / "results" / f"offset-{offset}.html.gz").exists()
-
     def _build_path(
         self,
         match_id: int,

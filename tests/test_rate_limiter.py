@@ -1,6 +1,8 @@
 """Unit tests for the adaptive rate limiter."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, AsyncMock
+
+import pytest
 
 from scraper.config import ScraperConfig
 from scraper.rate_limiter import RateLimiter
@@ -15,46 +17,38 @@ def _make_limiter(**overrides) -> RateLimiter:
 class TestWait:
     """Tests for RateLimiter.wait()."""
 
+    @pytest.mark.asyncio
     @patch("scraper.rate_limiter.time")
-    def test_wait_returns_jittered_delay(self, mock_time):
+    @patch("scraper.rate_limiter.asyncio.sleep", new_callable=AsyncMock)
+    async def test_wait_returns_jittered_delay(self, mock_async_sleep, mock_time):
         """Delay is between [current_delay, current_delay * 1.5]."""
-        mock_time.monotonic = MagicMock(side_effect=[0.0, 100.0, 100.0])
-        mock_time.sleep = MagicMock()
-
         limiter = _make_limiter(min_delay=4.0)
-        # First call: _last_request_time is 0.0, monotonic returns 0.0
-        # so elapsed = 0.0, meaning full sleep
-        # But _last_request_time starts at 0.0 and monotonic is 100.0 on first wait call
-        # so elapsed = 100.0 which means no sleep needed
-
-        # Simpler approach: set _last_request_time to something recent
         limiter._last_request_time = 100.0
 
-        mock_time.monotonic.reset_mock()
-        mock_time.monotonic.side_effect = [100.0, 100.0]
+        mock_time.monotonic.return_value = 100.0
 
-        delay = limiter.wait()
+        delay = await limiter.wait()
 
         # Jittered delay should be in [4.0, 6.0]
         assert 4.0 <= delay <= 6.0
 
+    @pytest.mark.asyncio
     @patch("scraper.rate_limiter.time")
-    def test_wait_accounts_for_elapsed_time(self, mock_time):
+    @patch("scraper.rate_limiter.asyncio.sleep", new_callable=AsyncMock)
+    async def test_wait_accounts_for_elapsed_time(self, mock_async_sleep, mock_time):
         """If 4s elapsed since last request and delay is 5s, sleep is ~1s."""
-        # Setup: last request was at t=100, now it's t=104 (4s elapsed)
-        mock_time.monotonic = MagicMock(side_effect=[104.0, 104.0])
-        mock_time.sleep = MagicMock()
+        mock_time.monotonic.return_value = 104.0
 
         limiter = _make_limiter(min_delay=5.0)
         limiter._last_request_time = 100.0
 
         # Force specific jitter value by patching random
         with patch("scraper.rate_limiter.random.uniform", return_value=5.0):
-            delay = limiter.wait()
+            delay = await limiter.wait()
 
         # Jittered delay is 5.0, elapsed is 4.0, so sleep should be 1.0
         assert delay == 5.0
-        mock_time.sleep.assert_called_once_with(1.0)
+        mock_async_sleep.assert_called_once_with(1.0)
 
 
 class TestBackoff:

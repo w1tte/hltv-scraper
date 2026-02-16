@@ -1,7 +1,7 @@
 """Tests for match overview parser against real HTML samples.
 
 Tests cover: BO1, BO3, BO5, forfeit, partial forfeit, overtime, unplayed maps,
-half scores, vetoes, rosters. All tests use gzipped HTML from data/recon/.
+half scores, vetoes. All tests use gzipped HTML from data/recon/.
 """
 
 import gzip
@@ -12,7 +12,6 @@ import pytest
 from scraper.match_parser import (
     MapResult,
     MatchOverview,
-    PlayerEntry,
     VetoStep,
     parse_match_overview,
 )
@@ -177,9 +176,6 @@ class TestForfeitMatch:
         for m in self.result.maps:
             if m.is_forfeit_map:
                 assert m.mapstatsid is None
-
-    def test_players_still_extracted(self):
-        assert len(self.result.players) == 10
 
     def test_vetoes_still_extracted(self):
         """Even forfeit matches have a veto sequence."""
@@ -381,42 +377,6 @@ class TestVetoExtraction:
 
 
 # ---------------------------------------------------------------------------
-# TestRosterExtraction -- BO3 sample (2389951)
-# ---------------------------------------------------------------------------
-class TestRosterExtraction:
-    """Test player roster extraction from Vitality vs G2 BO3."""
-
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        html = load_sample("match-2389951-overview.html.gz")
-        self.result = parse_match_overview(html, 2389951)
-
-    def test_ten_players_extracted(self):
-        assert len(self.result.players) == 10
-
-    def test_five_per_team(self):
-        team1_players = [p for p in self.result.players if p.team_num == 1]
-        team2_players = [p for p in self.result.players if p.team_num == 2]
-        assert len(team1_players) == 5
-        assert len(team2_players) == 5
-
-    def test_player_ids_positive(self):
-        for p in self.result.players:
-            assert p.player_id > 0
-
-    def test_player_names_not_empty(self):
-        for p in self.result.players:
-            assert p.player_name is not None
-            assert len(p.player_name) > 0
-
-    def test_team_ids_match_match_teams(self):
-        """Player team_ids should match the match's team1_id or team2_id."""
-        valid_team_ids = {self.result.team1_id, self.result.team2_id}
-        for p in self.result.players:
-            assert p.team_id in valid_team_ids
-
-
-# ---------------------------------------------------------------------------
 # TestAllSamplesParseWithoutCrash -- smoke test across all 9 samples
 # ---------------------------------------------------------------------------
 class TestAllSamplesParseWithoutCrash:
@@ -433,7 +393,6 @@ class TestAllSamplesParseWithoutCrash:
         assert result.team1_id > 0
         assert result.team2_id > 0
         assert len(result.maps) >= 1
-        assert len(result.players) >= 2  # At least some players
 
 
 # ---------------------------------------------------------------------------

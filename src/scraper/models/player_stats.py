@@ -24,12 +24,10 @@ class PlayerStatsModel(BaseModel):
     adr: float | None = Field(default=None, ge=0.0)
     kast: float | None = Field(default=None, ge=0.0, le=100.0)
     fk_diff: int | None = None  # Can be negative
-    rating_2: float | None = Field(default=None, ge=0.0)
-    rating_3: float | None = Field(default=None, ge=0.0)
-    # Performance page stats (Phase 7, may be None)
+    rating: float | None = Field(default=None, ge=0.0)
+    # Performance page stats (Phase 7, may be None until perf page scraped)
     kpr: float | None = Field(default=None, ge=0.0)
     dpr: float | None = Field(default=None, ge=0.0)
-    impact: float | None = None  # Can be negative
     # Phase 6 extended fields
     opening_kills: int | None = Field(default=None, ge=0)
     opening_deaths: int | None = Field(default=None, ge=0)
@@ -90,20 +88,11 @@ class PlayerStatsModel(BaseModel):
     @model_validator(mode="after")
     def warn_unusual_values(self) -> Self:
         """Warn on unusual but valid values."""
-        if self.rating_2 is not None and (
-            self.rating_2 < 0.1 or self.rating_2 > 3.0
+        if self.rating is not None and (
+            self.rating < 0.1 or self.rating > 3.0
         ):
             warnings.warn(
-                f"Unusual rating_2={self.rating_2} for player "
-                f"{self.player_id} (match {self.match_id}, "
-                f"map {self.map_number})",
-                stacklevel=2,
-            )
-        if self.rating_3 is not None and (
-            self.rating_3 < 0.1 or self.rating_3 > 3.0
-        ):
-            warnings.warn(
-                f"Unusual rating_3={self.rating_3} for player "
+                f"Unusual rating={self.rating} for player "
                 f"{self.player_id} (match {self.match_id}, "
                 f"map {self.map_number})",
                 stacklevel=2,

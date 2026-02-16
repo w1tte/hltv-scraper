@@ -1,8 +1,8 @@
 """Tests for performance page parser against real HTML samples.
 
 Tests cover: player metrics extraction (KPR, DPR, KAST, ADR, rating),
-Rating 2.0/3.0 handling, kill matrix parsing (3 types, 5x5 grid),
-team overview, and smoke tests across all 12 recon samples.
+kill matrix parsing (3 types, 5x5 grid), team overview, and smoke
+tests across all 12 recon samples.
 All tests use gzipped HTML from data/recon/.
 """
 
@@ -23,8 +23,8 @@ RECON_DIR = Path(__file__).resolve().parent.parent / "data" / "recon"
 
 # All available performance page samples
 ALL_SAMPLES = [
-    ("performance-162345.html.gz", 162345),  # Rating 2.0
-    ("performance-164779.html.gz", 164779),  # Rating 3.0
+    # performance-162345 excluded: Rating 2.0 (CS:GO) sample, not CS2
+    ("performance-164779.html.gz", 164779),
     ("performance-164780.html.gz", 164780),
     ("performance-173424.html.gz", 173424),
     ("performance-174112.html.gz", 174112),
@@ -91,62 +91,15 @@ class TestPlayerMetricsExtraction:
 
 
 # ---------------------------------------------------------------------------
-# TestRating20Handling -- Rating 2.0 sample (162345)
+# TestModernSampleHandling -- modern sample (219128)
 # ---------------------------------------------------------------------------
-class TestRating20Handling:
-    """Test Rating 2.0 specific behavior against sample 162345."""
-
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        html = load_sample("performance-162345.html.gz")
-        self.result = parse_performance(html, 162345)
-
-    def test_rating_version_detected(self):
-        assert self.result.rating_version == "2.0"
-
-    def test_impact_present(self):
-        for p in self.result.players:
-            assert isinstance(p.impact, float)
-            assert p.impact is not None
-
-    def test_mk_rating_absent(self):
-        for p in self.result.players:
-            assert p.mk_rating is None
-
-    def test_round_swing_absent(self):
-        for p in self.result.players:
-            assert p.round_swing is None
-
-    def test_six_bars_six_metrics(self):
-        """Verify 6 metrics extracted: kpr, dpr, kast, impact, adr, rating."""
-        for p in self.result.players:
-            assert p.kpr >= 0.0
-            assert p.dpr >= 0.0
-            assert p.kast >= 0.0
-            assert p.impact is not None
-            assert p.adr >= 0.0
-            assert p.rating >= 0.0
-
-    def test_rating_label(self):
-        """Rating value comes from 'Rating 2.0' bar label."""
-        for p in self.result.players:
-            assert p.rating_version == "2.0"
-            assert 0.0 < p.rating < 3.0
-
-
-# ---------------------------------------------------------------------------
-# TestRating30Handling -- most recent Rating 3.0 (219128)
-# ---------------------------------------------------------------------------
-class TestRating30Handling:
-    """Test Rating 3.0 specific behavior against sample 219128."""
+class TestModernSampleHandling:
+    """Test parser against modern sample 219128."""
 
     @pytest.fixture(autouse=True)
     def setup(self):
         html = load_sample("performance-219128.html.gz")
         self.result = parse_performance(html, 219128)
-
-    def test_rating_version_detected(self):
-        assert self.result.rating_version == "3.0"
 
     def test_mk_rating_present(self):
         for p in self.result.players:
@@ -158,14 +111,8 @@ class TestRating30Handling:
             assert isinstance(p.round_swing, float)
             assert p.round_swing is not None
 
-    def test_impact_absent(self):
+    def test_rating_reasonable(self):
         for p in self.result.players:
-            assert p.impact is None
-
-    def test_rating_label(self):
-        """Rating value comes from 'Rating 3.0' bar label."""
-        for p in self.result.players:
-            assert p.rating_version == "3.0"
             assert 0.0 < p.rating < 3.0
 
 

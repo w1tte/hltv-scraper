@@ -3,7 +3,7 @@
 Coordinates fetching, storing, parsing, and persisting match overview data.
 Pulls pending matches from the scrape_queue, fetches their overview pages,
 stores raw HTML, parses with parse_match_overview(), and persists all
-extracted data (match, maps, vetoes, players) to the database.
+extracted data (match, maps, vetoes) to the database.
 """
 
 import logging
@@ -14,11 +14,9 @@ from scraper.models import (
     ForfeitMatchModel,
     MapModel,
     MatchModel,
-    MatchPlayerModel,
     VetoModel,
 )
 from scraper.validation import (
-    check_player_count,
     validate_and_quarantine,
     validate_batch,
 )
@@ -71,23 +69,23 @@ async def run_match_overview(
 
     logger.info("Processing batch of %d pending matches", len(pending))
 
-    # 2. Fetch phase -- fetch all pages, discard batch on any failure
+    # 2. Fetch phase -- concurrent fetching with per-item failure handling
+    urls = [config.base_url + entry["url"] for entry in pending]
+    results = await client.fetch_many(urls)
+
     fetched_entries: list[dict] = []
-    for entry in pending:
-        url = config.base_url + entry["url"]
-        try:
-            html = await client.fetch(url)
-            storage.save(html, match_id=entry["match_id"], page_type="overview")
-            fetched_entries.append(entry)
-            logger.debug("Fetched match %d", entry["match_id"])
-        except Exception as exc:
+    for entry, result in zip(pending, results):
+        if isinstance(result, Exception):
             logger.error(
-                "Fetch failed for match %d: %s. Discarding entire batch.",
+                "Fetch failed for match %d: %s",
                 entry["match_id"],
-                exc,
+                result,
             )
             stats["fetch_errors"] += 1
-            return stats
+            continue
+        storage.save(result, match_id=entry["match_id"], page_type="overview")
+        fetched_entries.append(entry)
+        logger.debug("Fetched match %d", entry["match_id"])
 
     stats["fetched"] = len(fetched_entries)
 
@@ -163,21 +161,6 @@ async def run_match_overview(
                     for v in result.vetoes
                 ]
 
-            # Build players data
-            players_data = [
-                {
-                    "match_id": match_id,
-                    "player_id": p.player_id,
-                    "player_name": p.player_name,
-                    "team_id": p.team_id,
-                    "team_num": p.team_num,
-                    "scraped_at": now,
-                    "source_url": source_url,
-                    "parser_version": PARSER_VERSION,
-                }
-                for p in result.players
-            ]
-
             # --- Validate before persist ---
             ctx = {"match_id": match_id}
             model_cls = ForfeitMatchModel if result.is_forfeit else MatchModel
@@ -199,27 +182,16 @@ async def run_match_overview(
             validated_vetoes, vetoes_q = validate_batch(
                 vetoes_data, VetoModel, ctx, match_repo
             )
-            validated_players, players_q = validate_batch(
-                players_data, MatchPlayerModel, ctx, match_repo
-            )
-
-            if maps_q or vetoes_q or players_q:
+            if maps_q or vetoes_q:
                 logger.warning(
-                    "Match %d: quarantined %d maps, %d vetoes, %d players",
-                    match_id, maps_q, vetoes_q, players_q,
+                    "Match %d: quarantined %d maps, %d vetoes",
+                    match_id, maps_q, vetoes_q,
                 )
-
-            # Batch-level check: player count
-            player_warnings = check_player_count(
-                validated_players, match_id, None
-            )
-            for w in player_warnings:
-                logger.warning(w)
 
             # Persist atomically
             match_repo.upsert_match_overview(
                 validated_match, validated_maps,
-                validated_vetoes, validated_players,
+                validated_vetoes,
             )
             discovery_repo.update_status(match_id, "scraped")
             stats["parsed"] += 1

@@ -70,9 +70,21 @@ def config(tmp_path):
 
 @pytest.fixture
 def mock_client():
-    """Mock HLTVClient with async fetch method."""
+    """Mock HLTVClient with async fetch and fetch_many methods."""
     client = MagicMock()
     client.fetch = AsyncMock()
+
+    async def _fetch_many(urls):
+        results = []
+        for url in urls:
+            try:
+                result = await client.fetch(url)
+                results.append(result)
+            except Exception as e:
+                results.append(e)
+        return results
+
+    client.fetch_many = AsyncMock(side_effect=_fetch_many)
     return client
 
 
@@ -164,10 +176,10 @@ class TestRunMapStats:
         mock_client.fetch.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_fetch_failure_discards_batch(
+    async def test_fetch_failure_skips_failed_continues_others(
         self, mock_client, match_repo, storage, config
     ):
-        """Fetch failure on second map discards entire batch."""
+        """Fetch failure on second map skips it; first map still succeeds."""
         html = load_sample(SAMPLE_FILENAME)
         seed_match_with_maps(
             match_repo, SAMPLE_MATCH_ID, [SAMPLE_MAPSTATSID, 999999]
@@ -179,21 +191,16 @@ class TestRunMapStats:
         stats = await run_map_stats(mock_client, match_repo, storage, config)
 
         assert stats["fetch_errors"] == 1
-        assert stats["parsed"] == 0
+        assert stats["parsed"] == 1
 
-        # No player_stats or round_history should exist
+        # Player stats exist for the successfully fetched map
         player_stats = match_repo.get_player_stats(SAMPLE_MATCH_ID, map_number=1)
-        assert len(player_stats) == 0
+        assert len(player_stats) == 10
 
-        rounds = match_repo.conn.execute(
-            "SELECT * FROM round_history WHERE match_id = ?",
-            (SAMPLE_MATCH_ID,),
-        ).fetchall()
-        assert len(rounds) == 0
-
-        # Both maps still pending
+        # Failed map still pending
         pending = match_repo.get_pending_map_stats()
-        assert len(pending) == 2
+        assert len(pending) == 1
+        assert pending[0]["mapstatsid"] == 999999
 
     @pytest.mark.asyncio
     async def test_parse_failure_continues_batch(

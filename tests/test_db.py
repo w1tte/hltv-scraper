@@ -62,7 +62,7 @@ class TestDatabaseMigrations:
         """After initialize(), get_schema_version() returns latest migration version."""
         db = Database(tmp_path / "test.db")
         db.initialize()
-        assert db.get_schema_version() == 5
+        assert db.get_schema_version() == 7
         db.close()
 
     def test_database_connect_without_initialize(self, tmp_path):
@@ -84,7 +84,7 @@ class TestDatabaseMigrations:
         db = Database(tmp_path / "test.db")
         db.connect()
         first = db.apply_migrations()
-        assert first == 5  # 001_initial_schema + 002_scrape_queue + 003_vetoes_rosters + 004_performance_economy + 005_quarantine
+        assert first == 7  # 001-005 + 006_drop_match_players + 007_cs2_only_rating
         second = db.apply_migrations()
         assert second == 0
         db.close()
@@ -104,7 +104,7 @@ class TestDatabaseMigrations:
         db.close()
 
     def test_database_all_indexes_created(self, tmp_path):
-        """After initialize(), all 14 custom indexes exist (6 from v1 + 2 from v2 + 2 from v3 + 1 from v4 + 3 from v5)."""
+        """After initialize(), all 12 custom indexes exist (6 from v1 + 2 from v2 + 1 from v4 + 3 from v5; v3 match_players indexes dropped in v6; v7 recreates player_stats indexes)."""
         db = Database(tmp_path / "test.db")
         db.initialize()
         indexes = {
@@ -122,8 +122,6 @@ class TestDatabaseMigrations:
             "idx_player_stats_team",
             "idx_scrape_queue_status",
             "idx_scrape_queue_offset",
-            "idx_match_players_player",
-            "idx_match_players_team",
             "idx_kill_matrix_players",
             "idx_quarantine_match",
             "idx_quarantine_type",
@@ -142,7 +140,7 @@ class TestDatabaseContextManager:
         with Database(db_path) as db:
             assert db.conn is not None
             db.apply_migrations()
-            assert db.get_schema_version() == 5
+            assert db.get_schema_version() == 7
         # After exiting context, connection should be closed
         assert db._conn is None
 

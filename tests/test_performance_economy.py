@@ -89,6 +89,18 @@ def mock_client():
             raise ValueError(f"Unexpected URL: {url}")
 
     client.fetch = AsyncMock(side_effect=fetch_side_effect)
+
+    async def _fetch_many(urls):
+        results = []
+        for url in urls:
+            try:
+                result = await client.fetch(url)
+                results.append(result)
+            except Exception as e:
+                results.append(e)
+        return results
+
+    client.fetch_many = AsyncMock(side_effect=_fetch_many)
     return client
 
 
@@ -138,16 +150,16 @@ def seed_match_with_map_stats(
             "INSERT INTO player_stats ("
             "  match_id, map_number, player_id, player_name, team_id,"
             "  kills, deaths, assists, flash_assists, hs_kills, kd_diff,"
-            "  adr, kast, fk_diff, rating_2, rating_3,"
-            "  kpr, dpr, impact,"
+            "  adr, kast, fk_diff, rating,"
+            "  kpr, dpr,"
             "  opening_kills, opening_deaths, multi_kills, clutch_wins,"
             "  traded_deaths, round_swing, mk_rating,"
             "  scraped_at, updated_at, source_url, parser_version"
             ") VALUES ("
             "  ?, ?, ?, ?, ?,"
             "  ?, ?, ?, ?, ?, ?,"
-            "  ?, ?, ?, ?, ?,"
-            "  ?, ?, ?,"
+            "  ?, ?, ?, ?,"
+            "  ?, ?,"
             "  ?, ?, ?, ?,"
             "  ?, ?, ?,"
             "  ?, ?, ?, ?"
@@ -156,10 +168,8 @@ def seed_match_with_map_stats(
                 match_id, map_number, ps.player_id, ps.player_name, ps.team_id,
                 ps.kills, ps.deaths, ps.assists, ps.flash_assists,
                 ps.hs_kills, ps.kd_diff,
-                ps.adr, ps.kast, ps.fk_diff,
-                ps.rating if ps.rating_version == "2.0" else None,
-                ps.rating if ps.rating_version == "3.0" else None,
-                None, None, None,  # kpr, dpr, impact -- Phase 7
+                ps.adr, ps.kast, ps.fk_diff, ps.rating,
+                None, None,  # kpr, dpr -- Phase 7
                 ps.opening_kills, ps.opening_deaths, ps.multi_kills,
                 ps.clutch_wins, ps.traded_deaths, ps.round_swing,
                 None,  # mk_rating -- Phase 7
@@ -243,19 +253,17 @@ class TestHappyPath:
             )
 
     @pytest.mark.asyncio
-    async def test_impact_or_mk_rating_populated(
+    async def test_mk_rating_populated(
         self, mock_client, match_repo, storage, config
     ):
-        """After run, rows have either impact or mk_rating non-None."""
+        """After run, rows have mk_rating non-None."""
         seed_match_with_map_stats(match_repo, SAMPLE_MATCH_ID, SAMPLE_MAPSTATSID)
         await run_performance_economy(mock_client, match_repo, storage, config)
 
         rows = match_repo.get_player_stats(SAMPLE_MATCH_ID, map_number=1)
         for row in rows:
-            has_impact = row["impact"] is not None
-            has_mk = row["mk_rating"] is not None
-            assert has_impact or has_mk, (
-                f"Neither impact nor mk_rating set for player {row['player_id']}"
+            assert row["mk_rating"] is not None, (
+                f"mk_rating still NULL for player {row['player_id']}"
             )
 
     @pytest.mark.asyncio
@@ -446,17 +454,29 @@ class TestFetchFailure:
     async def test_fetch_error_discards_batch(
         self, match_repo, storage, config
     ):
-        """Fetch failure returns fetch_errors=1, parsed=0."""
+        """Fetch failure returns fetch_errors>=1, parsed=0."""
         seed_match_with_map_stats(match_repo, SAMPLE_MATCH_ID, SAMPLE_MAPSTATSID)
 
         client = MagicMock()
         client.fetch = AsyncMock(side_effect=Exception("Connection timeout"))
 
+        async def _fetch_many(urls):
+            results = []
+            for url in urls:
+                try:
+                    result = await client.fetch(url)
+                    results.append(result)
+                except Exception as e:
+                    results.append(e)
+            return results
+
+        client.fetch_many = AsyncMock(side_effect=_fetch_many)
+
         stats = await run_performance_economy(
             client, match_repo, storage, config
         )
 
-        assert stats["fetch_errors"] == 1
+        assert stats["fetch_errors"] >= 1
         assert stats["parsed"] == 0
 
     @pytest.mark.asyncio
@@ -468,6 +488,18 @@ class TestFetchFailure:
 
         client = MagicMock()
         client.fetch = AsyncMock(side_effect=Exception("Connection timeout"))
+
+        async def _fetch_many(urls):
+            results = []
+            for url in urls:
+                try:
+                    result = await client.fetch(url)
+                    results.append(result)
+                except Exception as e:
+                    results.append(e)
+            return results
+
+        client.fetch_many = AsyncMock(side_effect=_fetch_many)
 
         await run_performance_economy(client, match_repo, storage, config)
 
@@ -515,16 +547,16 @@ class TestParseFailure:
                 "INSERT INTO player_stats ("
                 "  match_id, map_number, player_id, player_name, team_id,"
                 "  kills, deaths, assists, flash_assists, hs_kills, kd_diff,"
-                "  adr, kast, fk_diff, rating_2, rating_3,"
-                "  kpr, dpr, impact,"
+                "  adr, kast, fk_diff, rating,"
+                "  kpr, dpr,"
                 "  opening_kills, opening_deaths, multi_kills, clutch_wins,"
                 "  traded_deaths, round_swing, mk_rating,"
                 "  scraped_at, updated_at, source_url, parser_version"
                 ") VALUES ("
                 "  ?, ?, ?, ?, ?,"
                 "  ?, ?, ?, ?, ?, ?,"
-                "  ?, ?, ?, ?, ?,"
-                "  ?, ?, ?,"
+                "  ?, ?, ?, ?,"
+                "  ?, ?,"
                 "  ?, ?, ?, ?,"
                 "  ?, ?, ?,"
                 "  ?, ?, ?, ?"
@@ -534,10 +566,8 @@ class TestParseFailure:
                     ps.team_id,
                     ps.kills, ps.deaths, ps.assists, ps.flash_assists,
                     ps.hs_kills, ps.kd_diff,
-                    ps.adr, ps.kast, ps.fk_diff,
-                    ps.rating if ps.rating_version == "2.0" else None,
-                    ps.rating if ps.rating_version == "3.0" else None,
-                    None, None, None,
+                    ps.adr, ps.kast, ps.fk_diff, ps.rating,
+                    None, None,
                     ps.opening_kills, ps.opening_deaths, ps.multi_kills,
                     ps.clutch_wins, ps.traded_deaths, ps.round_swing,
                     None,
@@ -580,6 +610,18 @@ class TestParseFailure:
 
         client = MagicMock()
         client.fetch = AsyncMock(side_effect=fetch_side_effect)
+
+        async def _fetch_many(urls):
+            results = []
+            for url in urls:
+                try:
+                    result = await client.fetch(url)
+                    results.append(result)
+                except Exception as e:
+                    results.append(e)
+            return results
+
+        client.fetch_many = AsyncMock(side_effect=_fetch_many)
 
         stats = await run_performance_economy(
             client, match_repo, storage, config

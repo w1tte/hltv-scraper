@@ -93,10 +93,9 @@ async def run_discovery(
     1. Check shutdown flag
     2. Skip if offset already in discovery_progress (resume support)
     3. Fetch the results page via client.fetch()
-    4. Archive raw HTML via storage.save_results_page()
-    5. Parse entries via parse_results_page()
-    6. In incremental mode, check for early termination (all matches known)
-    7. Persist batch + mark offset complete via repo.persist_page()
+    4. Parse entries via parse_results_page()
+    5. In incremental mode, check for early termination (all matches known)
+    6. Persist batch + mark offset complete via repo.persist_page()
 
     Args:
         client: HLTVClient instance (must be started).
@@ -134,13 +133,10 @@ async def run_discovery(
 
         try:
             # 1. Fetch
-            url = f"{config.base_url}/results?offset={offset}"
+            url = f"{config.base_url}/results?offset={offset}&gameType={config.game_type}"
             html = await client.fetch(url)
 
-            # 2. Archive raw HTML
-            storage.save_results_page(html, offset=offset)
-
-            # 3. Parse
+            # 2. Parse
             matches = parse_results_page(html)
 
             # 4. Validate entry count

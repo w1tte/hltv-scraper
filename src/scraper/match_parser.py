@@ -2,7 +2,7 @@
 
 Provides:
 - parse_match_overview: pure function extracting match data from overview HTML
-- MatchOverview, MapResult, VetoStep, PlayerEntry: structured return types
+- MatchOverview, MapResult, VetoStep: structured return types
 
 All selectors verified against 9 real HTML samples in Phase 3 recon.
 """
@@ -44,16 +44,6 @@ class MapResult:
 
 
 @dataclass
-class PlayerEntry:
-    """A player from the match roster."""
-
-    player_id: int
-    player_name: str | None
-    team_id: int | None
-    team_num: int  # 1 or 2
-
-
-@dataclass
 class MatchOverview:
     """Complete parsed data from an HLTV match overview page."""
 
@@ -71,7 +61,6 @@ class MatchOverview:
     event_name: str
     maps: list[MapResult]
     vetoes: list[VetoStep] | None  # None if unparseable or missing
-    players: list[PlayerEntry]
     is_forfeit: bool  # True if any map has map_name == "Default"
 
 
@@ -95,7 +84,6 @@ def parse_match_overview(html: str, match_id: int) -> MatchOverview:
     metadata = _extract_match_metadata(soup, match_id)
     maps = _extract_maps(soup)
     vetoes = _extract_vetoes(soup)
-    players = _extract_rosters(soup)
     is_forfeit = any(m.is_forfeit_map for m in maps)
 
     return MatchOverview(
@@ -113,7 +101,6 @@ def parse_match_overview(html: str, match_id: int) -> MatchOverview:
         event_name=metadata["event_name"],
         maps=maps,
         vetoes=vetoes,
-        players=players,
         is_forfeit=is_forfeit,
     )
 
@@ -415,37 +402,3 @@ def _extract_vetoes(soup: BeautifulSoup) -> list[VetoStep] | None:
             )
 
     return vetoes if vetoes else None
-
-
-def _extract_rosters(soup: BeautifulSoup) -> list[PlayerEntry]:
-    """Extract player rosters from lineup blocks."""
-    players: list[PlayerEntry] = []
-    lineups = soup.select(".lineups .lineup.standard-box")
-
-    for team_num, lineup in enumerate(lineups, start=1):
-        # Team ID from lineup header link
-        team_a = lineup.select_one(".box-headline a.text-ellipsis")
-        team_id: int | None = None
-        if team_a:
-            href = team_a.get("href", "")
-            m = re.search(r"/team/(\d+)/", href)
-            if m:
-                team_id = int(m.group(1))
-
-        # Players with data-player-id attribute
-        player_els = lineup.select("[data-player-id]")
-        for p_el in player_els:
-            player_id = int(p_el["data-player-id"])
-            name_el = p_el.select_one(".text-ellipsis")
-            player_name = name_el.text.strip() if name_el else None
-
-            players.append(
-                PlayerEntry(
-                    player_id=player_id,
-                    player_name=player_name,
-                    team_id=team_id,
-                    team_num=team_num,
-                )
-            )
-
-    return players

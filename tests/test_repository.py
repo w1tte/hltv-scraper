@@ -95,11 +95,9 @@ def make_player_stats_data(match_id=1, map_number=1, player_id=1, **overrides):
         "adr": 85.3,
         "kast": 72.0,
         "fk_diff": 2,
-        "rating_2": 1.25,
-        "rating_3": 1.30,
+        "rating": 1.30,
         "kpr": 0.85,
         "dpr": 0.58,
-        "impact": 1.15,
         "opening_kills": 3,
         "opening_deaths": 1,
         "multi_kills": 2,
@@ -157,22 +155,6 @@ def make_veto_data(match_id=1, step_number=1, **overrides):
         "team_name": "TeamA",
         "action": "removed",
         "map_name": "Nuke",
-        "scraped_at": "2025-06-16T10:00:00Z",
-        "source_url": f"https://www.hltv.org/matches/{match_id}/navi-vs-g2",
-        "parser_version": "0.1.0",
-    }
-    data.update(overrides)
-    return data
-
-
-def make_match_player_data(match_id=1, player_id=100, **overrides):
-    """Return a complete match_players dict with sensible defaults."""
-    data = {
-        "match_id": match_id,
-        "player_id": player_id,
-        "player_name": "player1",
-        "team_id": 4608,
-        "team_num": 1,
         "scraped_at": "2025-06-16T10:00:00Z",
         "source_url": f"https://www.hltv.org/matches/{match_id}/navi-vs-g2",
         "parser_version": "0.1.0",
@@ -429,41 +411,39 @@ class TestReadMethods:
 # ---------------------------------------------------------------------------
 
 class TestNullableFields:
-    def test_upsert_player_stats_nullable_ratings(self, repo):
-        """rating_2 and rating_3 can both be None."""
+    def test_upsert_player_stats_nullable_rating(self, repo):
+        """rating can be None."""
         repo.upsert_match(make_match_data(match_id=1))
         repo.upsert_map(make_map_data(match_id=1, map_number=1))
         repo.upsert_player_stats(make_player_stats_data(
             match_id=1, map_number=1, player_id=10,
-            rating_2=None, rating_3=None,
+            rating=None,
         ))
         stats = repo.get_player_stats(1, 1)
         assert len(stats) == 1
-        assert stats[0]["rating_2"] is None
-        assert stats[0]["rating_3"] is None
+        assert stats[0]["rating"] is None
 
     def test_upsert_player_stats_partial_performance(self, repo):
-        """kpr, dpr, impact can be None (populated later in Phase 7)."""
+        """kpr, dpr can be None (populated later in Phase 7)."""
         repo.upsert_match(make_match_data(match_id=1))
         repo.upsert_map(make_map_data(match_id=1, map_number=1))
         repo.upsert_player_stats(make_player_stats_data(
             match_id=1, map_number=1, player_id=10,
-            kpr=None, dpr=None, impact=None,
+            kpr=None, dpr=None,
         ))
         stats = repo.get_player_stats(1, 1)
         assert len(stats) == 1
         assert stats[0]["kpr"] is None
         assert stats[0]["dpr"] is None
-        assert stats[0]["impact"] is None
 
 
 # ---------------------------------------------------------------------------
-# UPSERT - upsert_match_overview (atomic match + maps + vetoes + players)
+# UPSERT - upsert_match_overview (atomic match + maps + vetoes)
 # ---------------------------------------------------------------------------
 
 class TestUpsertMatchOverview:
     def test_upsert_match_overview_inserts_all_data(self, repo):
-        """Insert match + 3 maps + 7 vetoes + 10 players in one call."""
+        """Insert match + 3 maps + 7 vetoes in one call."""
         match = make_match_data(match_id=1)
         maps = [
             make_map_data(match_id=1, map_number=i, map_name=name)
@@ -483,54 +463,41 @@ class TestUpsertMatchOverview:
         ]
         # Set team_name=None for "left_over" step
         vetoes[-1]["team_name"] = None
-        players = [
-            make_match_player_data(
-                match_id=1, player_id=100 + i,
-                player_name=f"Player{i}",
-                team_id=4608 if i <= 5 else 5995,
-                team_num=1 if i <= 5 else 2,
-            )
-            for i in range(1, 11)
-        ]
 
-        repo.upsert_match_overview(match, maps, vetoes, players)
+        repo.upsert_match_overview(match, maps, vetoes)
 
         assert repo.get_match(1) is not None
         assert len(repo.get_maps(1)) == 3
         assert len(repo.get_vetoes(1)) == 7
-        assert len(repo.get_match_players(1)) == 10
 
     def test_upsert_match_overview_is_atomic(self, repo):
-        """If a player insert fails, nothing is written (transaction rollback)."""
+        """If a veto insert fails, nothing is written (transaction rollback)."""
         match = make_match_data(match_id=1)
         maps = [make_map_data(match_id=1, map_number=1)]
-        vetoes = [make_veto_data(match_id=1, step_number=1)]
-        # Bad player data: missing required scraped_at field -> triggers error
-        bad_player = {
+        # Bad veto data: missing required scraped_at field -> triggers error
+        bad_veto = {
             "match_id": 1,
-            "player_id": 100,
-            "player_name": "test",
-            "team_id": 4608,
-            "team_num": 1,
+            "step_number": 1,
+            "team_name": "test",
+            "action": "removed",
+            "map_name": "Nuke",
             # scraped_at intentionally missing -> KeyError on named param
         }
         with pytest.raises(Exception):
-            repo.upsert_match_overview(match, maps, vetoes, [bad_player])
+            repo.upsert_match_overview(match, maps, [bad_veto])
 
         # Nothing should have been persisted
         assert repo.get_match(1) is None
         assert repo.get_maps(1) == []
         assert repo.get_vetoes(1) == []
-        assert repo.get_match_players(1) == []
 
     def test_upsert_match_overview_updates_on_conflict(self, repo):
-        """Upsert twice with modified player_name, verify update and updated_at."""
+        """Upsert twice with modified data, verify update and updated_at."""
         match = make_match_data(match_id=1)
         maps = [make_map_data(match_id=1, map_number=1)]
         vetoes = [make_veto_data(match_id=1, step_number=1, map_name="Nuke")]
-        players = [make_match_player_data(match_id=1, player_id=100, player_name="OldName")]
 
-        repo.upsert_match_overview(match, maps, vetoes, players)
+        repo.upsert_match_overview(match, maps, vetoes)
 
         # Second upsert with updated data
         match2 = make_match_data(match_id=1, scraped_at="2025-07-01T00:00:00Z")
@@ -538,17 +505,8 @@ class TestUpsertMatchOverview:
                                scraped_at="2025-07-01T00:00:00Z")]
         vetoes2 = [make_veto_data(match_id=1, step_number=1, map_name="Ancient",
                                   scraped_at="2025-07-01T00:00:00Z")]
-        players2 = [make_match_player_data(match_id=1, player_id=100,
-                                           player_name="NewName",
-                                           scraped_at="2025-07-01T00:00:00Z")]
 
-        repo.upsert_match_overview(match2, maps2, vetoes2, players2)
-
-        # Verify updates
-        p = repo.get_match_players(1)
-        assert len(p) == 1
-        assert p[0]["player_name"] == "NewName"
-        assert p[0]["updated_at"] == "2025-07-01T00:00:00Z"
+        repo.upsert_match_overview(match2, maps2, vetoes2)
 
         v = repo.get_vetoes(1)
         assert len(v) == 1
@@ -603,39 +561,6 @@ class TestVetoes:
         assert len(vetoes) == 1
         assert vetoes[0]["team_name"] is None
         assert vetoes[0]["action"] == "left_over"
-
-
-# ---------------------------------------------------------------------------
-# Match players read methods
-# ---------------------------------------------------------------------------
-
-class TestMatchPlayers:
-    def test_get_match_players_returns_ordered(self, repo):
-        """Insert 10 players across 2 teams, returned ordered by team_num then player_id."""
-        repo.upsert_match(make_match_data(match_id=1))
-        # Insert in random order: team2 players first, then team1
-        for pid, tnum in [(205, 2), (101, 1), (203, 2), (105, 1), (201, 2),
-                          (103, 1), (204, 2), (102, 1), (202, 2), (104, 1)]:
-            with repo.conn:
-                repo.conn.execute(
-                    "INSERT INTO match_players (match_id, player_id, player_name, "
-                    "team_id, team_num, scraped_at, updated_at, source_url, parser_version) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (1, pid, f"Player{pid}", 4608 if tnum == 1 else 5995, tnum,
-                     "2025-06-16T10:00:00Z", "2025-06-16T10:00:00Z", None, "0.1.0"),
-                )
-
-        players = repo.get_match_players(1)
-        assert len(players) == 10
-        # team1 (team_num=1) first, then team2 (team_num=2), each ordered by player_id
-        assert [p["player_id"] for p in players] == [
-            101, 102, 103, 104, 105,  # team 1
-            201, 202, 203, 204, 205,  # team 2
-        ]
-
-    def test_get_match_players_empty_match(self, repo):
-        """get_match_players returns empty list for nonexistent match."""
-        assert repo.get_match_players(9999) == []
 
 
 # ---------------------------------------------------------------------------

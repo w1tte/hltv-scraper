@@ -54,10 +54,6 @@ async def test_discover_first_two_pages(tmp_path):
         completed = repo.get_completed_offsets()
         assert completed == {0, 100}
 
-        # Verify HTML archival
-        assert storage.results_page_exists(0)
-        assert storage.results_page_exists(100)
-
         # Verify resume: run again, should skip both pages
         async with HLTVClient(config) as client2:
             stats2 = await run_discovery(client2, repo, storage, config)

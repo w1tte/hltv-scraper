@@ -77,16 +77,16 @@ UPSERT_PLAYER_STATS = """
     INSERT INTO player_stats (
         match_id, map_number, player_id, player_name, team_id,
         kills, deaths, assists, flash_assists, hs_kills, kd_diff,
-        adr, kast, fk_diff, rating_2, rating_3,
-        kpr, dpr, impact,
+        adr, kast, fk_diff, rating,
+        kpr, dpr,
         opening_kills, opening_deaths, multi_kills, clutch_wins,
         traded_deaths, round_swing, mk_rating,
         scraped_at, updated_at, source_url, parser_version
     ) VALUES (
         :match_id, :map_number, :player_id, :player_name, :team_id,
         :kills, :deaths, :assists, :flash_assists, :hs_kills, :kd_diff,
-        :adr, :kast, :fk_diff, :rating_2, :rating_3,
-        :kpr, :dpr, :impact,
+        :adr, :kast, :fk_diff, :rating,
+        :kpr, :dpr,
         :opening_kills, :opening_deaths, :multi_kills, :clutch_wins,
         :traded_deaths, :round_swing, :mk_rating,
         :scraped_at, :scraped_at, :source_url, :parser_version
@@ -103,11 +103,9 @@ UPSERT_PLAYER_STATS = """
         adr            = excluded.adr,
         kast           = excluded.kast,
         fk_diff        = excluded.fk_diff,
-        rating_2       = excluded.rating_2,
-        rating_3       = excluded.rating_3,
+        rating         = excluded.rating,
         kpr            = excluded.kpr,
         dpr            = excluded.dpr,
-        impact         = excluded.impact,
         opening_kills  = excluded.opening_kills,
         opening_deaths = excluded.opening_deaths,
         multi_kills    = excluded.multi_kills,
@@ -221,23 +219,6 @@ GET_PENDING_PERF_ECONOMY = """
     LIMIT ?
 """
 
-UPSERT_MATCH_PLAYER = """
-    INSERT INTO match_players (
-        match_id, player_id, player_name, team_id, team_num,
-        scraped_at, updated_at, source_url, parser_version
-    ) VALUES (
-        :match_id, :player_id, :player_name, :team_id, :team_num,
-        :scraped_at, :scraped_at, :source_url, :parser_version
-    )
-    ON CONFLICT(match_id, player_id) DO UPDATE SET
-        player_name    = excluded.player_name,
-        team_id        = excluded.team_id,
-        team_num       = excluded.team_num,
-        updated_at     = excluded.scraped_at,
-        source_url     = excluded.source_url,
-        parser_version = excluded.parser_version
-"""
-
 INSERT_QUARANTINE = """
     INSERT INTO quarantine (
         entity_type, match_id, map_number,
@@ -317,13 +298,12 @@ class MatchRepository:
         match_data: dict,
         maps_data: list[dict],
         vetoes_data: list[dict],
-        players_data: list[dict],
     ) -> None:
         """Atomically upsert a match with ALL related overview data.
 
-        Writes the match record, map records, veto sequence, and player
-        roster in a single transaction.  This is the primary method the
-        Phase 5 orchestrator calls after parsing a match overview page.
+        Writes the match record, map records, and veto sequence in a
+        single transaction.  This is the primary method the Phase 5
+        orchestrator calls after parsing a match overview page.
         """
         with self.conn:
             self.conn.execute(UPSERT_MATCH, match_data)
@@ -331,8 +311,6 @@ class MatchRepository:
                 self.conn.execute(UPSERT_MAP, map_data)
             for veto in vetoes_data:
                 self.conn.execute(UPSERT_VETO, veto)
-            for player in players_data:
-                self.conn.execute(UPSERT_MATCH_PLAYER, player)
 
     def upsert_map_stats_complete(
         self, stats_data: list[dict], rounds_data: list[dict]
@@ -455,15 +433,6 @@ class MatchRepository:
         """Return all vetoes for a match, ordered by step_number."""
         rows = self.conn.execute(
             "SELECT * FROM vetoes WHERE match_id = ? ORDER BY step_number",
-            (match_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
-
-    def get_match_players(self, match_id: int) -> list[dict]:
-        """Return all players for a match, ordered by team_num then player_id."""
-        rows = self.conn.execute(
-            "SELECT * FROM match_players WHERE match_id = ? "
-            "ORDER BY team_num, player_id",
             (match_id,),
         ).fetchall()
         return [dict(r) for r in rows]

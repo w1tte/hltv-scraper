@@ -61,30 +61,31 @@ async def run_map_stats(
 
     logger.info("Processing batch of %d pending maps", len(pending))
 
-    # 2. Fetch phase -- fetch all pages, discard batch on any failure
+    # 2. Fetch phase -- concurrent fetching with per-item failure handling
+    urls = [
+        config.base_url + MAP_STATS_URL_TEMPLATE.format(mapstatsid=entry["mapstatsid"])
+        for entry in pending
+    ]
+    results = await client.fetch_many(urls)
+
     fetched_entries: list[dict] = []
-    for entry in pending:
-        url = config.base_url + MAP_STATS_URL_TEMPLATE.format(
-            mapstatsid=entry["mapstatsid"]
-        )
-        try:
-            html = await client.fetch(url)
-            storage.save(
-                html,
-                match_id=entry["match_id"],
-                page_type="map_stats",
-                mapstatsid=entry["mapstatsid"],
-            )
-            fetched_entries.append(entry)
-            logger.debug("Fetched mapstatsid %d", entry["mapstatsid"])
-        except Exception as exc:
+    for entry, result in zip(pending, results):
+        if isinstance(result, Exception):
             logger.error(
-                "Fetch failed for mapstatsid %d: %s. Discarding entire batch.",
+                "Fetch failed for mapstatsid %d: %s",
                 entry["mapstatsid"],
-                exc,
+                result,
             )
             stats["fetch_errors"] += 1
-            return stats
+            continue
+        storage.save(
+            result,
+            match_id=entry["match_id"],
+            page_type="map_stats",
+            mapstatsid=entry["mapstatsid"],
+        )
+        fetched_entries.append(entry)
+        logger.debug("Fetched mapstatsid %d", entry["mapstatsid"])
 
     stats["fetched"] = len(fetched_entries)
 
@@ -124,11 +125,9 @@ async def run_map_stats(
                     "adr": ps.adr,
                     "kast": ps.kast,
                     "fk_diff": ps.fk_diff,
-                    "rating_2": ps.rating if ps.rating_version == "2.0" else None,
-                    "rating_3": ps.rating if ps.rating_version == "3.0" else None,
+                    "rating": ps.rating,
                     "kpr": None,       # Phase 7 -- performance page
                     "dpr": None,       # Phase 7 -- performance page
-                    "impact": None,    # Phase 7 -- performance page
                     "opening_kills": ps.opening_kills,
                     "opening_deaths": ps.opening_deaths,
                     "multi_kills": ps.multi_kills,

@@ -29,10 +29,8 @@ class PlayerPerformance:
     kast: float  # Percentage 0-100, stripped of '%'
     adr: float
     rating: float
-    rating_version: str  # "2.0" or "3.0"
-    mk_rating: float | None  # 3.0 only
-    round_swing: float | None  # 3.0 only, signed percentage
-    impact: float | None  # 2.0 only
+    mk_rating: float
+    round_swing: float  # signed percentage
 
 
 @dataclass
@@ -61,7 +59,6 @@ class PerformanceData:
     """Complete parsed data from an HLTV performance page."""
 
     mapstatsid: int
-    rating_version: str
     players: list[PlayerPerformance]
     kill_matrix: list[KillMatrixEntry]
     teams: list[TeamOverview]
@@ -120,59 +117,20 @@ def parse_performance(html: str, mapstatsid: int) -> PerformanceData:
     """
     soup = BeautifulSoup(html, "lxml")
 
-    rating_version = _detect_rating_version(soup)
-    players = _parse_player_cards(soup, rating_version)
+    players = _parse_player_cards(soup)
     kill_matrix = _parse_kill_matrix(soup)
     teams = _parse_team_overview(soup)
 
     return PerformanceData(
         mapstatsid=mapstatsid,
-        rating_version=rating_version,
         players=players,
         kill_matrix=kill_matrix,
         teams=teams,
     )
 
 
-def _detect_rating_version(soup: BeautifulSoup) -> str:
-    """Detect whether the page uses Rating 2.0 or 3.0.
-
-    Primary: check first FusionChart element's last bar label.
-    Fallback: presence of version-specific metric labels.
-    Default: "3.0" (modern pages).
-    """
-    chart_el = soup.select_one("[data-fusionchart-config]")
-    if not chart_el:
-        return "3.0"
-
-    try:
-        config = json.loads(chart_el["data-fusionchart-config"])
-        bars = config["dataSource"]["data"]
-    except (json.JSONDecodeError, KeyError, TypeError):
-        return "3.0"
-
-    if not bars:
-        return "3.0"
-
-    # Primary: last bar label
-    last_label = bars[-1].get("label", "")
-    if last_label == "Rating 3.0":
-        return "3.0"
-    if last_label == "Rating 2.0":
-        return "2.0"
-
-    # Fallback: check for version-specific metrics
-    label_set = {bar.get("label", "") for bar in bars}
-    if "MK rating" in label_set or "Swing" in label_set:
-        return "3.0"
-    if "Impact" in label_set:
-        return "2.0"
-
-    return "3.0"
-
-
 def _parse_player_cards(
-    soup: BeautifulSoup, rating_version: str
+    soup: BeautifulSoup,
 ) -> list[PlayerPerformance]:
     """Extract performance metrics from all 10 player cards.
 
@@ -232,59 +190,30 @@ def _parse_player_cards(
             logger.warning("Missing common metric key for player %s: %s", player_name, e)
             continue
 
-        # Version-specific metrics
-        if rating_version == "3.0":
-            try:
-                rating = _safe_float(bar_map["Rating 3.0"])
-                mk_rating = _safe_float(bar_map["MK rating"])
-                round_swing = _safe_float_signed(bar_map["Swing"])
-            except KeyError as e:
-                logger.warning(
-                    "Missing Rating 3.0 metric key for player %s: %s", player_name, e
-                )
-                continue
-
-            players.append(
-                PlayerPerformance(
-                    player_id=player_id,
-                    player_name=player_name,
-                    kpr=kpr,
-                    dpr=dpr,
-                    kast=kast,
-                    adr=adr,
-                    rating=rating,
-                    rating_version="3.0",
-                    mk_rating=mk_rating,
-                    round_swing=round_swing,
-                    impact=None,
-                )
+        # Rating 3.0 metrics (all CS2 matches)
+        try:
+            rating = _safe_float(bar_map["Rating 3.0"])
+            mk_rating = _safe_float(bar_map["MK rating"])
+            round_swing = _safe_float_signed(bar_map["Swing"])
+        except KeyError as e:
+            logger.warning(
+                "Missing Rating 3.0 metric key for player %s: %s", player_name, e
             )
-        else:
-            # Rating 2.0
-            try:
-                rating = _safe_float(bar_map["Rating 2.0"])
-                impact = _safe_float(bar_map["Impact"])
-            except KeyError as e:
-                logger.warning(
-                    "Missing Rating 2.0 metric key for player %s: %s", player_name, e
-                )
-                continue
+            continue
 
-            players.append(
-                PlayerPerformance(
-                    player_id=player_id,
-                    player_name=player_name,
-                    kpr=kpr,
-                    dpr=dpr,
-                    kast=kast,
-                    adr=adr,
-                    rating=rating,
-                    rating_version="2.0",
-                    mk_rating=None,
-                    round_swing=None,
-                    impact=impact,
-                )
+        players.append(
+            PlayerPerformance(
+                player_id=player_id,
+                player_name=player_name,
+                kpr=kpr,
+                dpr=dpr,
+                kast=kast,
+                adr=adr,
+                rating=rating,
+                mk_rating=mk_rating,
+                round_swing=round_swing,
             )
+        )
 
     if not players:
         raise ValueError("No player cards could be parsed from performance page")

@@ -9,7 +9,6 @@ from .economy import EconomyModel
 from .kill_matrix import KillMatrixModel
 from .map import MapModel
 from .match import ForfeitMatchModel, MatchModel
-from .match_player import MatchPlayerModel
 from .player_stats import PlayerStatsModel
 from .round_history import RoundHistoryModel
 from .veto import VetoModel
@@ -22,6 +21,5 @@ __all__ = [
     "RoundHistoryModel",
     "EconomyModel",
     "VetoModel",
-    "MatchPlayerModel",
     "KillMatrixModel",
 ]

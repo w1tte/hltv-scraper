@@ -91,9 +91,21 @@ def config(tmp_path):
 
 @pytest.fixture
 def mock_client():
-    """Mock HLTVClient with async fetch method."""
+    """Mock HLTVClient with async fetch and fetch_many methods."""
     client = MagicMock()
     client.fetch = AsyncMock()
+
+    async def _fetch_many(urls):
+        results = []
+        for url in urls:
+            try:
+                result = await client.fetch(url)
+                results.append(result)
+            except Exception as e:
+                results.append(e)
+        return results
+
+    client.fetch_many = AsyncMock(side_effect=_fetch_many)
     return client
 
 
@@ -150,10 +162,6 @@ class TestRunMatchOverview:
         vetoes = match_repo.get_vetoes(sample["match_id"])
         assert len(vetoes) > 0
 
-        # Verify players persisted
-        players = match_repo.get_match_players(sample["match_id"])
-        assert len(players) > 0
-
         # Verify queue status updated
         entry = discovery_repo.get_queue_entry(sample["match_id"])
         assert entry["status"] == "scraped"
@@ -174,15 +182,16 @@ class TestRunMatchOverview:
         mock_client.fetch.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_fetch_failure_discards_batch(
+    async def test_fetch_failure_skips_failed_continues_others(
         self, mock_client, match_repo, discovery_repo, storage, config
     ):
-        """Fetch failure on second match discards entire batch."""
-        html = load_sample(SAMPLE_2389951["filename"])
-        seed_pending(discovery_repo, SAMPLE_2389951["match_id"], SAMPLE_2389951["url"])
+        """Fetch failure on one match skips it; other match still succeeds."""
+        html = load_sample(SAMPLE_2371389["filename"])
         seed_pending(discovery_repo, SAMPLE_2371389["match_id"], SAMPLE_2371389["url"])
+        seed_pending(discovery_repo, SAMPLE_2389951["match_id"], SAMPLE_2389951["url"])
 
-        # First fetch succeeds, second raises
+        # Queue order is by match_id ASC: 2371389 first, 2389951 second
+        # First fetch succeeds (2371389), second raises (2389951)
         mock_client.fetch.side_effect = [html, Exception("Connection timeout")]
 
         stats = await run_match_overview(
@@ -190,16 +199,15 @@ class TestRunMatchOverview:
         )
 
         assert stats["fetch_errors"] == 1
-        assert stats["parsed"] == 0
+        assert stats["parsed"] == 1
 
-        # Both entries should remain pending (batch discarded)
-        entry1 = discovery_repo.get_queue_entry(SAMPLE_2389951["match_id"])
-        entry2 = discovery_repo.get_queue_entry(SAMPLE_2371389["match_id"])
-        assert entry1["status"] == "pending"
+        # Successfully fetched match was parsed
+        entry1 = discovery_repo.get_queue_entry(SAMPLE_2371389["match_id"])
+        assert entry1["status"] == "scraped"
+
+        # Failed match remains pending
+        entry2 = discovery_repo.get_queue_entry(SAMPLE_2389951["match_id"])
         assert entry2["status"] == "pending"
-
-        # No data should be in matches table
-        assert match_repo.count_matches() == 0
 
     @pytest.mark.asyncio
     async def test_parse_failure_marks_individual_failed(

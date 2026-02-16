@@ -1,7 +1,7 @@
 """Tests for map stats parser against real HTML samples.
 
-Tests cover: scoreboard extraction, Rating 2.0/3.0 handling, round history
-(standard, single OT, extended OT), map metadata, half breakdown.
+Tests cover: scoreboard extraction, round history (standard, single OT,
+extended OT), map metadata, half breakdown.
 All tests use gzipped HTML from data/recon/.
 """
 
@@ -21,8 +21,8 @@ RECON_DIR = Path(__file__).resolve().parent.parent / "data" / "recon"
 
 # All available map stats samples
 ALL_SAMPLES = [
-    ("mapstats-162345-stats.html.gz", 162345),  # Rating 2.0, single OT (30 rounds)
-    ("mapstats-164779-stats.html.gz", 164779),  # Rating 3.0, standard
+    ("mapstats-162345-stats.html.gz", 162345),  # single OT (30 rounds)
+    ("mapstats-164779-stats.html.gz", 164779),  # standard
     ("mapstats-164780-stats.html.gz", 164780),
     ("mapstats-173424-stats.html.gz", 173424),
     ("mapstats-174112-stats.html.gz", 174112),
@@ -105,26 +105,19 @@ class TestScoreboardExtraction:
 
 
 # ---------------------------------------------------------------------------
-# TestRating20Handling -- Rating 2.0 sample (162345)
+# TestOlderSampleHandling -- older sample (162345)
 # ---------------------------------------------------------------------------
-class TestRating20Handling:
-    """Test Rating 2.0 specific behavior against sample 162345."""
+class TestOlderSampleHandling:
+    """Test parser against older sample 162345."""
 
     @pytest.fixture(autouse=True)
     def setup(self):
         html = load_sample("mapstats-162345-stats.html.gz")
         self.result = parse_map_stats(html, 162345)
 
-    def test_rating_version_detected(self):
-        assert self.result.rating_version == "2.0"
-
-    def test_player_rating_version(self):
+    def test_round_swing_is_float(self):
         for p in self.result.players:
-            assert p.rating_version == "2.0"
-
-    def test_round_swing_is_none(self):
-        for p in self.result.players:
-            assert p.round_swing is None
+            assert isinstance(p.round_swing, float)
 
     def test_scoreboard_extracted_completely(self):
         assert len(self.result.players) == 10
@@ -138,26 +131,19 @@ class TestRating20Handling:
 
 
 # ---------------------------------------------------------------------------
-# TestRating30Handling -- modern Rating 3.0 (219128)
+# TestModernSampleHandling -- modern sample (219128)
 # ---------------------------------------------------------------------------
-class TestRating30Handling:
-    """Test Rating 3.0 specific behavior against sample 219128."""
+class TestModernSampleHandling:
+    """Test parser against modern sample 219128."""
 
     @pytest.fixture(autouse=True)
     def setup(self):
         html = load_sample("mapstats-219128-stats.html.gz")
         self.result = parse_map_stats(html, 219128)
 
-    def test_rating_version_detected(self):
-        assert self.result.rating_version == "3.0"
-
-    def test_player_rating_version(self):
-        for p in self.result.players:
-            assert p.rating_version == "3.0"
-
     def test_round_swing_extracted(self):
-        players_with_swing = [p for p in self.result.players if p.round_swing is not None]
-        assert len(players_with_swing) >= 5
+        for p in self.result.players:
+            assert isinstance(p.round_swing, float)
 
 
 # ---------------------------------------------------------------------------

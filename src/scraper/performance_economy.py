@@ -69,50 +69,52 @@ async def run_performance_economy(
         len(pending),
     )
 
-    # 2. Fetch phase -- fetch ALL pages (perf + econ per map), discard batch on failure
-    fetched_entries: list[dict] = []
+    # 2. Fetch phase -- concurrent fetching with per-item failure handling
+    #    Build interleaved URL list: [perf0, econ0, perf1, econ1, ...]
+    all_urls = []
     for entry in pending:
         mapstatsid = entry["mapstatsid"]
+        all_urls.append(config.base_url + PERF_URL_TEMPLATE.format(mapstatsid=mapstatsid))
+        all_urls.append(config.base_url + ECON_URL_TEMPLATE.format(mapstatsid=mapstatsid))
+
+    all_results = await client.fetch_many(all_urls)
+
+    fetched_entries: list[dict] = []
+    for i, entry in enumerate(pending):
+        mapstatsid = entry["mapstatsid"]
         match_id = entry["match_id"]
+        perf_result = all_results[i * 2]
+        econ_result = all_results[i * 2 + 1]
 
-        perf_url = config.base_url + PERF_URL_TEMPLATE.format(
-            mapstatsid=mapstatsid
-        )
-        econ_url = config.base_url + ECON_URL_TEMPLATE.format(
-            mapstatsid=mapstatsid
-        )
-
-        try:
-            # Fetch performance page
-            perf_html = await client.fetch(perf_url)
-            storage.save(
-                perf_html,
-                match_id=match_id,
-                page_type="map_performance",
-                mapstatsid=mapstatsid,
-            )
-            logger.debug("Fetched performance page for mapstatsid %d", mapstatsid)
-
-            # Fetch economy page
-            econ_html = await client.fetch(econ_url)
-            storage.save(
-                econ_html,
-                match_id=match_id,
-                page_type="map_economy",
-                mapstatsid=mapstatsid,
-            )
-            logger.debug("Fetched economy page for mapstatsid %d", mapstatsid)
-
-            fetched_entries.append(entry)
-
-        except Exception as exc:
+        if isinstance(perf_result, Exception):
             logger.error(
-                "Fetch failed for mapstatsid %d: %s. Discarding entire batch.",
-                mapstatsid,
-                exc,
+                "Fetch failed for performance page mapstatsid %d: %s",
+                mapstatsid, perf_result,
             )
             stats["fetch_errors"] += 1
-            return stats
+            continue
+        if isinstance(econ_result, Exception):
+            logger.error(
+                "Fetch failed for economy page mapstatsid %d: %s",
+                mapstatsid, econ_result,
+            )
+            stats["fetch_errors"] += 1
+            continue
+
+        storage.save(
+            perf_result,
+            match_id=match_id,
+            page_type="map_performance",
+            mapstatsid=mapstatsid,
+        )
+        storage.save(
+            econ_result,
+            match_id=match_id,
+            page_type="map_economy",
+            mapstatsid=mapstatsid,
+        )
+        fetched_entries.append(entry)
+        logger.debug("Fetched perf+econ for mapstatsid %d", mapstatsid)
 
     stats["fetched"] = len(fetched_entries)
 
@@ -169,12 +171,10 @@ async def run_performance_economy(
                     "adr": base.get("adr"),
                     "kast": base.get("kast"),
                     "fk_diff": base.get("fk_diff"),
-                    "rating_2": base.get("rating_2"),
-                    "rating_3": base.get("rating_3"),
+                    "rating": base.get("rating"),
                     # Phase 7 fields from performance parser
                     "kpr": p.kpr,
                     "dpr": p.dpr,
-                    "impact": p.impact,
                     "mk_rating": p.mk_rating,
                     # Phase 6 fields preserved from existing row
                     "opening_kills": base.get("opening_kills"),

@@ -14,8 +14,8 @@ class ScraperConfig:
     """
 
     # Rate limiting: delay between requests
-    min_delay: float = 3.0
-    max_delay: float = 8.0
+    min_delay: float = 0.8
+    max_delay: float = 3.0
 
     # Adaptive backoff on challenge/error
     backoff_factor: float = 2.0
@@ -30,10 +30,13 @@ class ScraperConfig:
     max_retries: int = 5
 
     # Seconds to wait after navigation for page to load
-    page_load_wait: float = 4.0
+    page_load_wait: float = 2.0
 
-    # Seconds of extra wait when a challenge is detected (before rechecking)
-    challenge_wait: float = 5.0
+    # Number of concurrent browser tabs for parallel fetching
+    concurrent_tabs: int = 3
+
+    # Seconds to poll for Cloudflare challenge to clear during fetches
+    challenge_wait: float = 30.0
 
     # HLTV base URL (single-site scraper)
     base_url: str = HLTV_BASE_URL
@@ -43,6 +46,7 @@ class ScraperConfig:
     db_path: str = "data/hltv.db"
 
     # Discovery pagination
+    game_type: str = "CS2"           # Game filter: CS2, CSGO, or CS16
     max_offset: int = 9900           # Last offset to paginate to (inclusive)
     results_per_page: int = 100      # Entries per results page (HLTV constant)
 

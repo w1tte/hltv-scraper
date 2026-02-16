@@ -45,11 +45,10 @@ class PlayerStats:
     opening_deaths: int
     fk_diff: int  # opening_kills - opening_deaths
     rating: float
-    rating_version: str  # "2.0" or "3.0"
     multi_kills: int
     clutch_wins: int
     traded_deaths: int
-    round_swing: float | None  # Rating 3.0 only; None for 2.0
+    round_swing: float
 
 
 @dataclass
@@ -74,7 +73,6 @@ class MapStats:
     team_left_score: int
     team_right_score: int
     map_name: str
-    rating_version: str  # "2.0" or "3.0"
     team_left_ct_rounds: int
     team_left_t_rounds: int
     team_right_ct_rounds: int
@@ -101,12 +99,10 @@ def parse_map_stats(html: str, mapstatsid: int) -> MapStats:
     """
     soup = BeautifulSoup(html, "lxml")
 
-    rating_version = _detect_rating_version(soup)
     metadata = _extract_metadata(soup, mapstatsid)
     half_breakdown = _extract_half_breakdown(soup)
     players = _extract_scoreboard(
         soup,
-        rating_version,
         metadata["team_left_id"],
         metadata["team_right_id"],
     )
@@ -125,7 +121,6 @@ def parse_map_stats(html: str, mapstatsid: int) -> MapStats:
         team_left_score=metadata["team_left_score"],
         team_right_score=metadata["team_right_score"],
         map_name=metadata["map_name"],
-        rating_version=rating_version,
         team_left_ct_rounds=half_breakdown["team_left_ct_rounds"],
         team_left_t_rounds=half_breakdown["team_left_t_rounds"],
         team_right_ct_rounds=half_breakdown["team_right_ct_rounds"],
@@ -134,28 +129,6 @@ def parse_map_stats(html: str, mapstatsid: int) -> MapStats:
         players=players,
         rounds=rounds,
     )
-
-
-def _detect_rating_version(soup: BeautifulSoup) -> str:
-    """Detect whether the page uses Rating 2.0 or 3.0.
-
-    Primary: check th.st-rating text for "2.0" or "3.0".
-    Fallback: presence of th.st-roundSwing -> "3.0".
-    Default: "3.0" (modern pages).
-    """
-    rating_th = soup.select_one("th.st-rating")
-    if rating_th:
-        text = rating_th.get_text(strip=True)
-        if "2.0" in text:
-            return "2.0"
-        if "3.0" in text:
-            return "3.0"
-
-    # Fallback: presence of roundSwing column header
-    if soup.select_one("th.st-roundSwing"):
-        return "3.0"
-
-    return "3.0"
 
 
 def _extract_metadata(soup: BeautifulSoup, mapstatsid: int) -> dict:
@@ -336,7 +309,6 @@ def _parse_percentage(text: str) -> float:
 
 def _extract_scoreboard(
     soup: BeautifulSoup,
-    rating_version: str,
     team_left_id: int,
     team_right_id: int,
 ) -> list[PlayerStats]:
@@ -428,13 +400,10 @@ def _extract_scoreboard(
             except (ValueError, TypeError):
                 clutch_wins = 0
 
-            # Round swing (Rating 3.0 only): "+2.90%"
-            round_swing: float | None = None
-            if rating_version == "3.0":
-                rs_td = row.select_one("td.st-roundSwing")
-                if rs_td:
-                    rs_text = rs_td.get_text(strip=True)
-                    round_swing = _parse_percentage(rs_text)
+            # Round swing: "+2.90%"
+            rs_td = row.select_one("td.st-roundSwing")
+            rs_text = rs_td.get_text(strip=True) if rs_td else "0%"
+            round_swing = _parse_percentage(rs_text)
 
             players.append(
                 PlayerStats(
@@ -453,7 +422,6 @@ def _extract_scoreboard(
                     opening_deaths=opening_deaths,
                     fk_diff=opening_kills - opening_deaths,
                     rating=rating,
-                    rating_version=rating_version,
                     multi_kills=multi_kills,
                     clutch_wins=clutch_wins,
                     traded_deaths=traded_deaths,

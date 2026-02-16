@@ -3,8 +3,12 @@
 Uses randomized delays with adaptive backoff to avoid detection by
 Cloudflare's behavioral analysis. The limiter tracks elapsed time
 between requests so processing time counts toward the delay.
+
+Fully async -- uses asyncio.sleep and asyncio.Lock so concurrent
+fetches are properly serialized without blocking the event loop.
 """
 
+import asyncio
 import logging
 import random
 import time
@@ -24,6 +28,9 @@ class RateLimiter:
     Time already spent processing since the last request is subtracted from the
     wait, so if processing took 4 seconds and the delay is 5 seconds, only 1
     second of actual sleep occurs.
+
+    Uses an asyncio.Lock so multiple concurrent fetchers are properly
+    serialized through the rate limiter.
     """
 
     def __init__(self, config: ScraperConfig | None = None):
@@ -37,34 +44,39 @@ class RateLimiter:
         self._max_backoff = config.max_backoff
         self._current_delay = config.min_delay
         self._last_request_time: float = 0.0
+        self._lock = asyncio.Lock()
 
     @property
     def current_delay(self) -> float:
         """Current base delay value in seconds."""
         return self._current_delay
 
-    def wait(self) -> float:
+    async def wait(self) -> float:
         """Sleep for a jittered delay, accounting for elapsed processing time.
+
+        Uses asyncio.Lock to serialize concurrent callers so requests are
+        properly spaced even with multiple browser tabs.
 
         Returns:
             The jittered delay value (before elapsed-time adjustment).
         """
-        now = time.monotonic()
-        elapsed = now - self._last_request_time
+        async with self._lock:
+            now = time.monotonic()
+            elapsed = now - self._last_request_time
 
-        # Jitter: uniform random in [current_delay, current_delay * 1.5]
-        jittered_delay = random.uniform(
-            self._current_delay, self._current_delay * 1.5
-        )
+            # Jitter: uniform random in [current_delay, current_delay * 1.5]
+            jittered_delay = random.uniform(
+                self._current_delay, self._current_delay * 1.5
+            )
 
-        # Subtract time already elapsed since last request
-        remaining = max(0.0, jittered_delay - elapsed)
+            # Subtract time already elapsed since last request
+            remaining = max(0.0, jittered_delay - elapsed)
 
-        if remaining > 0:
-            time.sleep(remaining)
+            if remaining > 0:
+                await asyncio.sleep(remaining)
 
-        self._last_request_time = time.monotonic()
-        return jittered_delay
+            self._last_request_time = time.monotonic()
+            return jittered_delay
 
     def backoff(self) -> None:
         """Increase delay after a failed request or Cloudflare challenge."""
