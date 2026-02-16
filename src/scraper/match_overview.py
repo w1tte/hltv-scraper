@@ -10,6 +10,18 @@ import logging
 from datetime import datetime, timezone
 
 from scraper.match_parser import parse_match_overview
+from scraper.models import (
+    ForfeitMatchModel,
+    MapModel,
+    MatchModel,
+    MatchPlayerModel,
+    VetoModel,
+)
+from scraper.validation import (
+    check_player_count,
+    validate_and_quarantine,
+    validate_batch,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -166,9 +178,48 @@ async def run_match_overview(
                 for p in result.players
             ]
 
+            # --- Validate before persist ---
+            ctx = {"match_id": match_id}
+            model_cls = ForfeitMatchModel if result.is_forfeit else MatchModel
+
+            validated_match = validate_and_quarantine(
+                match_data, model_cls, ctx, match_repo
+            )
+            if validated_match is None:
+                logger.error(
+                    "Match %d failed validation, skipping", match_id
+                )
+                discovery_repo.update_status(match_id, "failed")
+                stats["failed"] += 1
+                continue
+
+            validated_maps, maps_q = validate_batch(
+                maps_data, MapModel, ctx, match_repo
+            )
+            validated_vetoes, vetoes_q = validate_batch(
+                vetoes_data, VetoModel, ctx, match_repo
+            )
+            validated_players, players_q = validate_batch(
+                players_data, MatchPlayerModel, ctx, match_repo
+            )
+
+            if maps_q or vetoes_q or players_q:
+                logger.warning(
+                    "Match %d: quarantined %d maps, %d vetoes, %d players",
+                    match_id, maps_q, vetoes_q, players_q,
+                )
+
+            # Batch-level check: player count
+            player_warnings = check_player_count(
+                validated_players, match_id, None
+            )
+            for w in player_warnings:
+                logger.warning(w)
+
             # Persist atomically
             match_repo.upsert_match_overview(
-                match_data, maps_data, vetoes_data, players_data
+                validated_match, validated_maps,
+                validated_vetoes, validated_players,
             )
             discovery_repo.update_status(match_id, "scraped")
             stats["parsed"] += 1

@@ -11,6 +11,8 @@ import logging
 from datetime import datetime, timezone
 
 from scraper.map_stats_parser import parse_map_stats
+from scraper.models import PlayerStatsModel, RoundHistoryModel
+from scraper.validation import check_player_count, validate_batch
 
 logger = logging.getLogger(__name__)
 
@@ -154,8 +156,41 @@ async def run_map_stats(
                     "parser_version": PARSER_VERSION,
                 })
 
+            # --- Validate before persist ---
+            ctx = {"match_id": match_id, "map_number": map_number}
+
+            validated_stats, stats_q = validate_batch(
+                stats_data, PlayerStatsModel, ctx, match_repo
+            )
+            validated_rounds, rounds_q = validate_batch(
+                rounds_data, RoundHistoryModel, ctx, match_repo
+            )
+
+            if stats_q or rounds_q:
+                logger.warning(
+                    "mapstatsid %d: quarantined %d player_stats, %d rounds",
+                    mapstatsid, stats_q, rounds_q,
+                )
+
+            if not validated_stats:
+                logger.error(
+                    "All player_stats quarantined for mapstatsid %d, skipping",
+                    mapstatsid,
+                )
+                stats["failed"] += 1
+                continue
+
+            # Batch-level check: player count
+            player_warnings = check_player_count(
+                validated_stats, match_id, map_number
+            )
+            for w in player_warnings:
+                logger.warning(w)
+
             # Persist atomically
-            match_repo.upsert_map_stats_complete(stats_data, rounds_data)
+            match_repo.upsert_map_stats_complete(
+                validated_stats, validated_rounds
+            )
             stats["parsed"] += 1
             logger.info(
                 "Parsed and persisted mapstatsid %d (match %d, map %d)",

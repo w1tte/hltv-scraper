@@ -12,7 +12,9 @@ import logging
 from datetime import datetime, timezone
 
 from scraper.economy_parser import parse_economy
+from scraper.models import EconomyModel, KillMatrixModel, PlayerStatsModel
 from scraper.performance_parser import parse_performance
+from scraper.validation import check_economy_alignment, validate_batch
 
 logger = logging.getLogger(__name__)
 
@@ -271,9 +273,44 @@ async def run_performance_economy(
                     "parser_version": PARSER_VERSION,
                 })
 
+            # --- Validate before persist ---
+            ctx = {"match_id": match_id, "map_number": map_number}
+
+            validated_perf, perf_q = validate_batch(
+                perf_stats, PlayerStatsModel, ctx, match_repo
+            )
+            validated_econ, econ_q = validate_batch(
+                economy_data, EconomyModel, ctx, match_repo
+            )
+            validated_km, km_q = validate_batch(
+                kill_matrix_data, KillMatrixModel, ctx, match_repo
+            )
+
+            if perf_q or econ_q or km_q:
+                logger.warning(
+                    "mapstatsid %d: quarantined %d perf_stats, "
+                    "%d economy, %d kill_matrix",
+                    mapstatsid, perf_q, econ_q, km_q,
+                )
+
+            if not validated_perf:
+                logger.error(
+                    "All perf_stats quarantined for mapstatsid %d, skipping",
+                    mapstatsid,
+                )
+                stats["failed"] += 1
+                continue
+
+            # Batch-level check: economy alignment
+            econ_warnings = check_economy_alignment(
+                validated_econ, valid_rounds, match_id, map_number
+            )
+            for w in econ_warnings:
+                logger.warning(w)
+
             # --- Persist atomically ---
             match_repo.upsert_perf_economy_complete(
-                perf_stats, economy_data, kill_matrix_data
+                validated_perf, validated_econ, validated_km
             )
             stats["parsed"] += 1
             logger.info(
@@ -282,9 +319,9 @@ async def run_performance_economy(
                 mapstatsid,
                 match_id,
                 map_number,
-                len(perf_stats),
-                len(economy_data),
-                len(kill_matrix_data),
+                len(validated_perf),
+                len(validated_econ),
+                len(validated_km),
             )
 
         except Exception as exc:
