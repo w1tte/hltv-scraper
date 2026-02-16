@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Reliably extract every available stat from HLTV match pages into a structured, queryable dataset -- without getting blocked.
-**Current focus:** Phase 7 (Performance + Economy Extraction) in progress. Plans 07-01, 07-02, 07-03 complete. Next: 07-04 (orchestrator).
+**Current focus:** Phase 7 (Performance + Economy Extraction) complete. All 4 plans done. Next: Phase 8 (Pipeline Runner).
 
 ## Current Position
 
 Phase: 7 of 9 (Performance and Economy Extraction)
-Plan: 3 of 4 in current phase (07-01, 07-02, 07-03 complete)
-Status: In progress
-Last activity: 2026-02-16 -- Completed 07-01-PLAN.md (schema & repository extension)
+Plan: 4 of 4 in current phase (07-01, 07-02, 07-03, 07-04 complete)
+Status: Phase complete
+Last activity: 2026-02-16 -- Completed 07-04-PLAN.md (performance + economy orchestrator)
 
-Progress: [████████--] 88% (22/25 plans with plan files)
+Progress: [█████████-] 92% (23/25 plans with plan files)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 22
+- Total plans completed: 23
 - Average duration: ~9 min
-- Total execution time: ~3.3 hours
+- Total execution time: ~3.6 hours
 
 **By Phase:**
 
@@ -33,11 +33,11 @@ Progress: [████████--] 88% (22/25 plans with plan files)
 | 04-match-discovery | 3/3 | ~9 min | ~3 min |
 | 05-match-overview | 3/3 | ~20 min | ~7 min |
 | 06-map-stats-extraction | 3/3 | ~34 min | ~11 min |
-| 07-perf-economy | 3/4 | ~14 min | ~5 min |
+| 07-perf-economy | 4/4 | ~34 min | ~9 min |
 
 **Recent Trend:**
-- Last 5 plans: 07-02 (8 min), 07-03 (4 min), 07-01 (4 min), 06-03 (24 min), 06-01 (8 min)
-- Parser-only plans are fast; orchestrator plans take longer due to larger test suites
+- Last 5 plans: 07-04 (20 min), 07-02 (8 min), 07-03 (4 min), 07-01 (4 min), 06-03 (24 min)
+- Orchestrator plans take longer due to larger test suites and multi-module integration
 
 *Updated after each plan completion*
 
@@ -132,6 +132,9 @@ Recent decisions affecting current work:
 - [07-03]: Buy type categories: full_eco/semi_eco/semi_buy/full_buy (canonical names from HLTV trendlines, replacing placeholder eco/force/full/pistol from schema comment)
 - [07-03]: Economy FusionChart uses 'value' directly as equipment value (unlike performance page where 'value' is normalized)
 - [07-03]: Side inference via round_sides dict -- winner's anchorImageUrl determines both teams' CT/T sides per round
+- [07-04]: Read-merge-write for UPSERT: reads existing player_stats to preserve Phase 6 columns, adds Phase 7 fields (kpr, dpr, impact, mk_rating)
+- [07-04]: Economy team_id resolution from match_data team names with positional fallback for FusionChart name mismatches
+- [07-04]: Economy FK filtering via get_valid_round_numbers() -- only inserts economy rows for rounds present in round_history
 
 ### Pending Todos
 
@@ -142,10 +145,10 @@ None yet.
 - ~~[Research]: Economy data availability for historical matches uncertain~~ -- RESOLVED in 03-06: Economy data exists for all eras (2023-2026) with identical structure. OT economy data missing for MR12 matches only.
 - ~~[Research]: Rating 2.0 vs 3.0 HTML differences unknown~~ -- RESOLVED across 03-04 and 03-05: Sample 162345 (Sep 2023, tier-3) retains Rating 2.0 format on both map stats (no Swing column, null eco-adjusted) and performance page (6-bar FusionChart with "Impact" and "Rating 2.0"). Detection: map stats uses th.st-rating text; performance uses last FusionChart bar label. Parsers must handle both versions.
 - [01-03]: nodriver requires a real Chrome installation and runs a full browser process -- heavier than curl_cffi but necessary for Cloudflare bypass
-- [02-01]: Economy->round_history FK may cause insertion issues if economy data exists without matching round history -- monitor in parsing phases
+- ~~[02-01]: Economy->round_history FK may cause insertion issues if economy data exists without matching round history -- monitor in parsing phases~~ -- RESOLVED in 07-04: FK-safe economy insertion via get_valid_round_numbers() filtering; only rounds present in round_history are inserted
 
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 07-01-PLAN.md (schema & repository extension) -- 07-01, 07-02, 07-03 all done, 07-04 next
+Stopped at: Completed 07-04-PLAN.md (performance + economy orchestrator) -- Phase 7 complete, Phase 8 next
 Resume file: None
