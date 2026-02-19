@@ -185,15 +185,15 @@ def _extract_match_metadata(soup: BeautifulSoup, match_id: int) -> dict:
         if bo_match:
             best_of = int(bo_match.group(1))
         else:
-            logger.warning("Match %d: could not parse best_of from format text", match_id)
+            logger.warning("Match %d: could not parse best_of from format text (https://www.hltv.org/matches/%d)", match_id, match_id)
 
         lan_match = re.search(r"\((LAN|Online)\)", fmt_text)
         if lan_match:
             is_lan = 1 if lan_match.group(1) == "LAN" else 0
         else:
-            logger.warning("Match %d: could not parse LAN/Online from format text", match_id)
+            logger.warning("Match %d: could not parse LAN/Online from format text (https://www.hltv.org/matches/%d)", match_id, match_id)
     else:
-        logger.warning("Match %d: no format text element found", match_id)
+        logger.warning("Match %d: no format text element found (https://www.hltv.org/matches/%d)", match_id, match_id)
 
     return {
         "team1_name": team1_name,

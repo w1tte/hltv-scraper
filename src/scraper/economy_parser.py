@@ -122,6 +122,13 @@ def _parse_fusionchart_economy(
 
     config = json.loads(fc_el["data-fusionchart-config"])
     ds = config["dataSource"]
+
+    if "categories" not in ds:
+        raise ValueError(
+            f"Economy {mapstatsid}: FusionChart missing 'categories' key "
+            f"(wrong page type served)"
+        )
+
     round_labels = [cat["label"] for cat in ds["categories"][0]["category"]]
 
     return ds, round_labels

@@ -138,7 +138,7 @@ class TestRunMatchOverview:
         mock_client.fetch.return_value = html
 
         stats = await run_match_overview(
-            mock_client, match_repo, discovery_repo, storage, config
+            [mock_client], match_repo, discovery_repo, storage, config
         )
 
         # Verify stats
@@ -172,7 +172,7 @@ class TestRunMatchOverview:
     ):
         """No pending matches => stats show 0 work, client.fetch never called."""
         stats = await run_match_overview(
-            mock_client, match_repo, discovery_repo, storage, config
+            [mock_client], match_repo, discovery_repo, storage, config
         )
 
         assert stats["batch_size"] == 0
@@ -195,7 +195,7 @@ class TestRunMatchOverview:
         mock_client.fetch.side_effect = [html, Exception("Connection timeout")]
 
         stats = await run_match_overview(
-            mock_client, match_repo, discovery_repo, storage, config
+            [mock_client], match_repo, discovery_repo, storage, config
         )
 
         assert stats["fetch_errors"] == 1
@@ -229,7 +229,7 @@ class TestRunMatchOverview:
         mock_client.fetch.side_effect = [html_good, html_bad]
 
         stats = await run_match_overview(
-            mock_client, match_repo, discovery_repo, storage, config
+            [mock_client], match_repo, discovery_repo, storage, config
         )
 
         assert stats["fetched"] == 2
@@ -256,7 +256,7 @@ class TestRunMatchOverview:
         mock_client.fetch.return_value = html
 
         stats = await run_match_overview(
-            mock_client, match_repo, discovery_repo, storage, config
+            [mock_client], match_repo, discovery_repo, storage, config
         )
 
         assert stats["parsed"] == 1
@@ -290,7 +290,7 @@ class TestRunMatchOverview:
         mock_client.fetch.return_value = html
 
         stats = await run_match_overview(
-            mock_client, match_repo, discovery_repo, storage, config
+            [mock_client], match_repo, discovery_repo, storage, config
         )
 
         assert "batch_size" in stats
@@ -309,7 +309,7 @@ class TestRunMatchOverview:
         mock_client.fetch.return_value = html
 
         await run_match_overview(
-            mock_client, match_repo, discovery_repo, storage, config
+            [mock_client], match_repo, discovery_repo, storage, config
         )
 
         match = match_repo.get_match(SAMPLE_2389951["match_id"])

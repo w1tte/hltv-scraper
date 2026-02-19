@@ -16,6 +16,7 @@ from scraper.models import (
     MatchModel,
     VetoModel,
 )
+from scraper.http_client import fetch_distributed
 from scraper.validation import (
     validate_and_quarantine,
     validate_batch,
@@ -27,7 +28,7 @@ PARSER_VERSION = "match_overview_v1"
 
 
 async def run_match_overview(
-    client,              # HLTVClient
+    clients,             # list[HLTVClient]
     match_repo,          # MatchRepository
     discovery_repo,      # DiscoveryRepository
     storage,             # HtmlStorage
@@ -42,7 +43,7 @@ async def run_match_overview(
     as 'failed' and continue).
 
     Args:
-        client: HLTVClient instance (must be started).
+        clients: List of HLTVClient instances (must be started).
         match_repo: MatchRepository instance.
         discovery_repo: DiscoveryRepository instance.
         storage: HtmlStorage instance.
@@ -71,21 +72,23 @@ async def run_match_overview(
 
     # 2. Fetch phase -- concurrent fetching with per-item failure handling
     urls = [config.base_url + entry["url"] for entry in pending]
-    results = await client.fetch_many(urls)
+    results = await fetch_distributed(clients, urls, content_marker="team1-gradient")
 
     fetched_entries: list[dict] = []
     for entry, result in zip(pending, results):
         if isinstance(result, Exception):
             logger.error(
-                "Fetch failed for match %d: %s",
+                "Fetch failed for match %d (%s%s): %s",
                 entry["match_id"],
+                config.base_url,
+                entry["url"],
                 result,
             )
             stats["fetch_errors"] += 1
             continue
         storage.save(result, match_id=entry["match_id"], page_type="overview")
         fetched_entries.append(entry)
-        logger.debug("Fetched match %d", entry["match_id"])
+        logger.debug("Fetched match %d (%s%s)", entry["match_id"], config.base_url, entry["url"])
 
     stats["fetched"] = len(fetched_entries)
 
@@ -170,7 +173,8 @@ async def run_match_overview(
             )
             if validated_match is None:
                 logger.error(
-                    "Match %d failed validation, skipping", match_id
+                    "Match %d failed validation, skipping (%s%s)",
+                    match_id, config.base_url, entry["url"],
                 )
                 discovery_repo.update_status(match_id, "failed")
                 stats["failed"] += 1
@@ -195,10 +199,10 @@ async def run_match_overview(
             )
             discovery_repo.update_status(match_id, "scraped")
             stats["parsed"] += 1
-            logger.info("Parsed and persisted match %d", match_id)
+            logger.info("Parsed and persisted match %d (%s%s)", match_id, config.base_url, entry["url"])
 
         except Exception as exc:
-            logger.error("Parse/persist failed for match %d: %s", match_id, exc)
+            logger.error("Parse/persist failed for match %d (%s%s): %s", match_id, config.base_url, entry["url"], exc)
             discovery_repo.update_status(match_id, "failed")
             stats["failed"] += 1
 

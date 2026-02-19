@@ -9,14 +9,28 @@ economy rows to valid round_history entries, and persists atomically.
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 
 from scraper.economy_parser import parse_economy
+from scraper.http_client import fetch_distributed
 from scraper.models import EconomyModel, KillMatrixModel, PlayerStatsModel
 from scraper.performance_parser import parse_performance
 from scraper.validation import check_economy_alignment, validate_batch
 
 logger = logging.getLogger(__name__)
+
+_MAPSTATSID_RE = re.compile(r"/stats/matches/(?:performance|economy)/mapstatsid/(\d+)/")
+
+
+def _extract_mapstatsid(html: str) -> int | None:
+    """Extract the mapstatsid from internal links in a perf/econ page.
+
+    Returns None if no matching link is found (defensive — should not happen).
+    """
+    m = _MAPSTATSID_RE.search(html)
+    return int(m.group(1)) if m else None
+
 
 PARSER_VERSION = "perf_economy_v1"
 PERF_URL_TEMPLATE = "/stats/matches/performance/mapstatsid/{mapstatsid}/x"
@@ -24,7 +38,7 @@ ECON_URL_TEMPLATE = "/stats/matches/economy/mapstatsid/{mapstatsid}/x"
 
 
 async def run_performance_economy(
-    client,         # HLTVClient
+    clients,        # list[HLTVClient]
     match_repo,     # MatchRepository
     storage,        # HtmlStorage
     config,         # ScraperConfig
@@ -38,7 +52,7 @@ async def run_performance_economy(
     (failed maps are logged and others continue).
 
     Args:
-        client: HLTVClient instance (must be started).
+        clients: List of HLTVClient instances (must be started).
         match_repo: MatchRepository instance.
         storage: HtmlStorage instance.
         config: ScraperConfig instance.
@@ -77,7 +91,7 @@ async def run_performance_economy(
         all_urls.append(config.base_url + PERF_URL_TEMPLATE.format(mapstatsid=mapstatsid))
         all_urls.append(config.base_url + ECON_URL_TEMPLATE.format(mapstatsid=mapstatsid))
 
-    all_results = await client.fetch_many(all_urls)
+    all_results = await fetch_distributed(clients, all_urls, content_marker="data-fusionchart-config")
 
     fetched_entries: list[dict] = []
     for i, entry in enumerate(pending):
@@ -92,6 +106,7 @@ async def run_performance_economy(
                 mapstatsid, perf_result,
             )
             stats["fetch_errors"] += 1
+            match_repo.increment_perf_attempts(match_id, entry["map_number"])
             continue
         if isinstance(econ_result, Exception):
             logger.error(
@@ -99,6 +114,7 @@ async def run_performance_economy(
                 mapstatsid, econ_result,
             )
             stats["fetch_errors"] += 1
+            match_repo.increment_perf_attempts(match_id, entry["map_number"])
             continue
 
         storage.save(
@@ -124,6 +140,11 @@ async def run_performance_economy(
         match_id = entry["match_id"]
         map_number = entry["map_number"]
 
+        # Track attempt count so maps with persistent failures get skipped
+        # after max_attempts. Truly successful maps (all kpr set) won't
+        # appear in the pending query regardless of the counter.
+        match_repo.increment_perf_attempts(match_id, map_number)
+
         try:
             # Load stored HTML
             perf_html = storage.load(
@@ -136,6 +157,26 @@ async def run_performance_economy(
                 page_type="map_economy",
                 mapstatsid=mapstatsid,
             )
+
+            # Validate that fetched pages match expected mapstatsid
+            actual_perf_id = _extract_mapstatsid(perf_html)
+            actual_econ_id = _extract_mapstatsid(econ_html)
+
+            if actual_perf_id is not None and actual_perf_id != mapstatsid:
+                logger.warning(
+                    "Wrong perf page content for mapstatsid %d (got %d), will retry",
+                    mapstatsid, actual_perf_id,
+                )
+                stats["failed"] += 1
+                continue
+
+            if actual_econ_id is not None and actual_econ_id != mapstatsid:
+                logger.warning(
+                    "Wrong econ page content for mapstatsid %d (got %d), will retry",
+                    mapstatsid, actual_econ_id,
+                )
+                stats["failed"] += 1
+                continue
 
             # Parse both pages
             perf_result = parse_performance(perf_html, mapstatsid)
@@ -315,13 +356,15 @@ async def run_performance_economy(
             stats["parsed"] += 1
             logger.info(
                 "Parsed and persisted mapstatsid %d (match %d, map %d): "
-                "%d player_stats, %d economy rows, %d kill_matrix entries",
+                "%d player_stats, %d economy rows, %d kill_matrix entries "
+                "(https://www.hltv.org/matches/%d)",
                 mapstatsid,
                 match_id,
                 map_number,
                 len(validated_perf),
                 len(validated_econ),
                 len(validated_km),
+                match_id,
             )
 
         except Exception as exc:

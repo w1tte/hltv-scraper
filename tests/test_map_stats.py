@@ -138,7 +138,7 @@ class TestRunMapStats:
         seed_match_with_maps(match_repo, SAMPLE_MATCH_ID, [SAMPLE_MAPSTATSID])
         mock_client.fetch.return_value = html
 
-        stats = await run_map_stats(mock_client, match_repo, storage, config)
+        stats = await run_map_stats([mock_client], match_repo, storage, config)
 
         # Verify stats
         assert stats["batch_size"] == 1
@@ -167,7 +167,7 @@ class TestRunMapStats:
         self, mock_client, match_repo, storage, config
     ):
         """No pending maps => stats show 0 work, client.fetch never called."""
-        stats = await run_map_stats(mock_client, match_repo, storage, config)
+        stats = await run_map_stats([mock_client], match_repo, storage, config)
 
         assert stats["batch_size"] == 0
         assert stats["fetched"] == 0
@@ -188,7 +188,7 @@ class TestRunMapStats:
         # First fetch succeeds, second raises
         mock_client.fetch.side_effect = [html, Exception("Connection timeout")]
 
-        stats = await run_map_stats(mock_client, match_repo, storage, config)
+        stats = await run_map_stats([mock_client], match_repo, storage, config)
 
         assert stats["fetch_errors"] == 1
         assert stats["parsed"] == 1
@@ -218,7 +218,7 @@ class TestRunMapStats:
         # map_number 1 = SAMPLE_MAPSTATSID (good), map_number 2 = 999999 (bad)
         mock_client.fetch.side_effect = [html_good, html_bad]
 
-        stats = await run_map_stats(mock_client, match_repo, storage, config)
+        stats = await run_map_stats([mock_client], match_repo, storage, config)
 
         assert stats["fetched"] == 2
         assert stats["parsed"] == 1
@@ -242,7 +242,7 @@ class TestRunMapStats:
         seed_match_with_maps(match_repo, SAMPLE_MATCH_ID, [SAMPLE_MAPSTATSID])
         mock_client.fetch.return_value = html
 
-        await run_map_stats(mock_client, match_repo, storage, config)
+        await run_map_stats([mock_client], match_repo, storage, config)
 
         # Verify storage has the file
         assert storage.exists(
@@ -264,7 +264,7 @@ class TestRunMapStats:
         self, mock_client, match_repo, storage, config
     ):
         """Returned stats dict has all expected keys, even on empty batch."""
-        stats = await run_map_stats(mock_client, match_repo, storage, config)
+        stats = await run_map_stats([mock_client], match_repo, storage, config)
 
         assert "batch_size" in stats
         assert "fetched" in stats
@@ -294,7 +294,7 @@ class TestRunMapStats:
             "scraper.map_stats.parse_map_stats",
             side_effect=patched_parse,
         ):
-            stats = await run_map_stats(mock_client, match_repo, storage, config)
+            stats = await run_map_stats([mock_client], match_repo, storage, config)
 
         # Map should still parse (partial data persisted)
         assert stats["parsed"] == 1

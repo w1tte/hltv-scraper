@@ -2,10 +2,13 @@
 
 Provides the ``run_pipeline`` async function that wires all four stage
 orchestrators (discovery, match overview, map stats, performance/economy)
-into a sequential loop-until-done pipeline with shutdown checking and
-consecutive failure tracking.
+into a pipeline where stages 2-4 run concurrently via asyncio tasks.
 
-Also provides three utility building blocks:
+Each downstream stage polls the DB for pending work.  When no work is
+available and its upstream stage hasn't finished yet, it sleeps and retries.
+When the upstream stage is done and no work remains, it terminates.
+
+Also provides utility building blocks:
 
 * **ShutdownHandler** -- cross-platform graceful Ctrl+C via
   ``signal.signal(SIGINT, ...)``.  First press sets a flag; second press
@@ -14,12 +17,15 @@ Also provides three utility building blocks:
   failures suggest a systemic problem (IP ban, site down).
 * **ProgressTracker** -- per-match progress logging with timing and an
   end-of-run summary.
+* **StageCoordinator** -- signals stage completion so downstream stages
+  know when to stop polling.
 """
 
 import asyncio
 import logging
 import signal
 import time
+from typing import Awaitable, Callable
 
 from scraper.discovery import run_discovery
 from scraper.match_overview import run_match_overview
@@ -137,7 +143,10 @@ class ProgressTracker:
             progress = f"[{self.completed}/{self.total}]"
         else:
             progress = f"[{self.completed}]"
-        logger.info("%s match %d %s (%.1fs)", progress, match_id, symbol, elapsed)
+        logger.info(
+            "%s match %d %s (%.1fs) https://www.hltv.org/matches/%d",
+            progress, match_id, symbol, elapsed, match_id,
+        )
 
     def log_stage(self, stage: str, stats: dict) -> None:
         """Log a summary line for a completed pipeline stage.
@@ -176,11 +185,101 @@ class ProgressTracker:
 
 
 # ---------------------------------------------------------------------------
+# Stage coordination
+# ---------------------------------------------------------------------------
+
+class StageCoordinator:
+    """Coordinate stage completion for concurrent pipeline stages.
+
+    Each stage gets an ``asyncio.Event``. When a stage finishes (success
+    or failure), it marks itself done. Downstream stages poll this to
+    decide whether to keep waiting for more work or terminate.
+    """
+
+    def __init__(self) -> None:
+        self._done = {
+            name: asyncio.Event()
+            for name in ["discovery", "overview", "map_stats", "perf_economy"]
+        }
+
+    def mark_done(self, stage: str) -> None:
+        self._done[stage].set()
+
+    def is_done(self, stage: str) -> bool:
+        return self._done[stage].is_set()
+
+
+# ---------------------------------------------------------------------------
+# Stage loop helper
+# ---------------------------------------------------------------------------
+
+async def _run_stage_loop(
+    stage_name: str,
+    upstream_stage: str,
+    run_fn: Callable[..., Awaitable[dict]],
+    run_fn_kwargs: dict,
+    results_key: str,
+    results: dict,
+    coordinator: StageCoordinator,
+    shutdown: ShutdownHandler,
+    failure_tracker: ConsecutiveFailureTracker,
+    progress: ProgressTracker,
+    poll_interval: float,
+    log_label: str,
+) -> None:
+    """Run a pipeline stage in a polling loop until no work remains.
+
+    When the orchestrator returns ``batch_size == 0``:
+    - If the upstream stage is not done yet, sleep and retry.
+    - If the upstream stage IS done, do one final re-check for race
+      condition safety, then exit.
+
+    On exit (normal or failure), marks the stage as done in the
+    coordinator so downstream stages can terminate.
+    """
+    logger.info("=== Stage: %s (concurrent) ===", stage_name)
+    try:
+        while not shutdown.is_set and not failure_tracker.should_halt:
+            stats = await run_fn(**run_fn_kwargs)
+            results[results_key]["parsed"] += stats["parsed"]
+            results[results_key]["failed"] += stats["failed"]
+
+            if stats["batch_size"] == 0:
+                if coordinator.is_done(upstream_stage):
+                    # Race condition safety: upstream just finished,
+                    # re-check once in case work appeared after our query
+                    recheck = await run_fn(**run_fn_kwargs)
+                    results[results_key]["parsed"] += recheck["parsed"]
+                    results[results_key]["failed"] += recheck["failed"]
+                    if recheck["batch_size"] == 0:
+                        break
+                    # Got work on recheck, continue the loop
+                    stats = recheck
+                else:
+                    await asyncio.sleep(poll_interval)
+                    continue
+
+            if stats["parsed"] > 0:
+                failure_tracker.record_success()
+            if stats["fetch_errors"] > 0 or (stats["failed"] > 0 and stats["parsed"] == 0):
+                if failure_tracker.record_failure():
+                    results["halted"] = True
+                    results["halt_reason"] = (
+                        f"Consecutive failures exceeded threshold ({stage_name} stage)"
+                    )
+                    break
+            progress.log_stage(f"{log_label} batch", stats)
+    finally:
+        coordinator.mark_done(results_key)
+        logger.info("Stage %s finished", stage_name)
+
+
+# ---------------------------------------------------------------------------
 # Pipeline runner
 # ---------------------------------------------------------------------------
 
 async def run_pipeline(
-    client,              # HLTVClient
+    clients: dict,       # {"overview": [HLTVClient, ...], "map_stats": [...], "perf_economy": [...]}
     match_repo,          # MatchRepository
     discovery_repo,      # DiscoveryRepository
     storage,             # HtmlStorage
@@ -189,16 +288,16 @@ async def run_pipeline(
     incremental: bool = True,
     force_rescrape: bool = False,
 ) -> dict:
-    """Run the full scraper pipeline: discovery -> overview -> map stats -> perf/economy.
+    """Run the full scraper pipeline: discovery -> overview + map stats + perf/economy.
 
-    Each stage runs in a loop until no pending work remains (or shutdown
-    is requested, or consecutive failures exceed the threshold).
-
-    Uses untyped parameters (same pattern as the individual orchestrators)
-    to avoid circular imports.
+    Stage 1 (discovery) runs sequentially. After it completes, stages 2-4
+    launch as concurrent asyncio tasks, each with its own browser pool
+    and failure tracker.
 
     Args:
-        client: HLTVClient instance (must be started).
+        clients: Dict mapping stage names to lists of HLTVClient instances.
+            Keys: ``"overview"``, ``"map_stats"``, ``"perf_economy"``.
+            Discovery reuses the ``"overview"`` client list.
         match_repo: MatchRepository instance.
         discovery_repo: DiscoveryRepository instance.
         storage: HtmlStorage instance.
@@ -212,7 +311,7 @@ async def run_pipeline(
     Returns:
         Dict with per-stage results, halt status, and summary.
     """
-    failure_tracker = ConsecutiveFailureTracker(config.consecutive_failure_threshold)
+    coordinator = StageCoordinator()
     progress = ProgressTracker(total=0)
 
     results = {
@@ -231,87 +330,105 @@ async def run_pipeline(
             logger.info("Reset %d failed matches to pending", reset_count)
 
     # ---------------------------------------------------------------
-    # Stage 1: Discovery
+    # Stage 1: Discovery (sequential, uses the overview client)
     # ---------------------------------------------------------------
     if not shutdown.is_set:
         logger.info("=== Stage 1: Discovery ===")
         try:
             discovery_stats = await run_discovery(
-                client, discovery_repo, storage, config,
+                clients["overview"], discovery_repo, storage, config,
                 incremental=incremental, shutdown=shutdown,
             )
             results["discovery"] = discovery_stats
             progress.log_stage("Discovery", discovery_stats)
-            failure_tracker.record_success()
         except Exception as exc:
             logger.error("Discovery failed: %s", exc)
-            if failure_tracker.record_failure():
-                results["halted"] = True
-                results["halt_reason"] = f"Discovery failed: {exc}"
-                results["summary"] = progress.summary()
-                return results
+            results["halted"] = True
+            results["halt_reason"] = f"Discovery failed: {exc}"
+            results["summary"] = progress.summary()
+            coordinator.mark_done("discovery")
+            return results
+
+    coordinator.mark_done("discovery")
+
+    if shutdown.is_set:
+        results["halted"] = True
+        results["halt_reason"] = "User requested shutdown (Ctrl+C)"
+        results["summary"] = progress.summary()
+        return results
 
     # ---------------------------------------------------------------
-    # Stage 2: Match Overview -- loop until no pending work
+    # Stages 2-4: Concurrent with per-stage failure tracking
     # ---------------------------------------------------------------
-    if not shutdown.is_set:
-        logger.info("=== Stage 2: Match Overview ===")
-    while not shutdown.is_set and not failure_tracker.should_halt:
-        stats = await run_match_overview(
-            client, match_repo, discovery_repo, storage, config,
-        )
-        results["overview"]["parsed"] += stats["parsed"]
-        results["overview"]["failed"] += stats["failed"]
-        if stats["batch_size"] == 0:
-            break
-        if stats["parsed"] > 0:
-            failure_tracker.record_success()
-        if stats["fetch_errors"] > 0 or (stats["failed"] > 0 and stats["parsed"] == 0):
-            if failure_tracker.record_failure():
-                results["halted"] = True
-                results["halt_reason"] = "Consecutive failures exceeded threshold (overview stage)"
-                break
-        progress.log_stage("Match overview batch", stats)
+    poll_interval = config.stage_poll_interval
+    threshold = config.consecutive_failure_threshold
 
-    # ---------------------------------------------------------------
-    # Stage 3: Map Stats -- loop until no pending work
-    # ---------------------------------------------------------------
-    if not shutdown.is_set and not failure_tracker.should_halt:
-        logger.info("=== Stage 3: Map Stats ===")
-    while not shutdown.is_set and not failure_tracker.should_halt:
-        stats = await run_map_stats(client, match_repo, storage, config)
-        results["map_stats"]["parsed"] += stats["parsed"]
-        results["map_stats"]["failed"] += stats["failed"]
-        if stats["batch_size"] == 0:
-            break
-        if stats["parsed"] > 0:
-            failure_tracker.record_success()
-        if stats["fetch_errors"] > 0 or (stats["failed"] > 0 and stats["parsed"] == 0):
-            if failure_tracker.record_failure():
-                results["halted"] = True
-                results["halt_reason"] = "Consecutive failures exceeded threshold (map stats stage)"
-                break
-        progress.log_stage("Map stats batch", stats)
+    overview_tracker = ConsecutiveFailureTracker(threshold)
+    map_stats_tracker = ConsecutiveFailureTracker(threshold)
+    perf_economy_tracker = ConsecutiveFailureTracker(threshold)
 
-    # ---------------------------------------------------------------
-    # Stage 4: Performance + Economy -- loop until no pending work
-    # ---------------------------------------------------------------
-    if not shutdown.is_set and not failure_tracker.should_halt:
-        logger.info("=== Stage 4: Performance + Economy ===")
-    while not shutdown.is_set and not failure_tracker.should_halt:
-        stats = await run_performance_economy(client, match_repo, storage, config)
-        results["perf_economy"]["parsed"] += stats["parsed"]
-        results["perf_economy"]["failed"] += stats["failed"]
-        if stats["batch_size"] == 0:
-            break
-        if stats["parsed"] > 0:
-            failure_tracker.record_success()
-        if stats["fetch_errors"] > 0 or (stats["failed"] > 0 and stats["parsed"] == 0):
-            if failure_tracker.record_failure():
-                results["halted"] = True
-                results["halt_reason"] = "Consecutive failures exceeded threshold (perf/economy stage)"
-                break
-        progress.log_stage("Perf/economy batch", stats)
+    overview_task = asyncio.create_task(_run_stage_loop(
+        stage_name="Match Overview",
+        upstream_stage="discovery",
+        run_fn=run_match_overview,
+        run_fn_kwargs={
+            "clients": clients["overview"],
+            "match_repo": match_repo,
+            "discovery_repo": discovery_repo,
+            "storage": storage,
+            "config": config,
+        },
+        results_key="overview",
+        results=results,
+        coordinator=coordinator,
+        shutdown=shutdown,
+        failure_tracker=overview_tracker,
+        progress=progress,
+        poll_interval=poll_interval,
+        log_label="Match overview",
+    ))
+
+    map_stats_task = asyncio.create_task(_run_stage_loop(
+        stage_name="Map Stats",
+        upstream_stage="overview",
+        run_fn=run_map_stats,
+        run_fn_kwargs={
+            "clients": clients["map_stats"],
+            "match_repo": match_repo,
+            "storage": storage,
+            "config": config,
+        },
+        results_key="map_stats",
+        results=results,
+        coordinator=coordinator,
+        shutdown=shutdown,
+        failure_tracker=map_stats_tracker,
+        progress=progress,
+        poll_interval=poll_interval,
+        log_label="Map stats",
+    ))
+
+    perf_economy_task = asyncio.create_task(_run_stage_loop(
+        stage_name="Perf/Economy",
+        upstream_stage="map_stats",
+        run_fn=run_performance_economy,
+        run_fn_kwargs={
+            "clients": clients["perf_economy"],
+            "match_repo": match_repo,
+            "storage": storage,
+            "config": config,
+        },
+        results_key="perf_economy",
+        results=results,
+        coordinator=coordinator,
+        shutdown=shutdown,
+        failure_tracker=perf_economy_tracker,
+        progress=progress,
+        poll_interval=poll_interval,
+        log_label="Perf/economy",
+    ))
+
+    await asyncio.gather(overview_task, map_stats_task, perf_economy_task)
 
     # ---------------------------------------------------------------
     # Summary

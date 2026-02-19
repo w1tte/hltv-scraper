@@ -4,9 +4,12 @@ Uses a real Chrome browser (off-screen window) to navigate HLTV pages,
 solving Cloudflare challenges automatically. Integrates RateLimiter
 for request pacing and tenacity for retry logic.
 
-On start(), navigates to HLTV and waits for Cloudflare to clear. All
-subsequent fetches reuse the SAME browser tab (navigating it to new
-URLs) so the Cloudflare clearance persists.
+On start(), navigates to HLTV and waits for Cloudflare to clear, then
+opens ``concurrent_tabs`` browser tabs (default 3). All tabs share the
+same browser cookie jar so Cloudflare clearance persists across them.
+``fetch_many()`` dispatches URLs across the tab pool concurrently via
+``asyncio.gather()``, giving up to Nx throughput where N is the number
+of tabs.
 
 Why nodriver instead of curl_cffi:
   HLTV's /stats/matches/performance/ pages serve an active Cloudflare
@@ -40,8 +43,23 @@ from scraper.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
-# Challenge page indicators in the page title
-_CHALLENGE_TITLES = ("Just a moment...", "Checking your browser")
+# Challenge page indicators in the page title (including localized variants)
+_CHALLENGE_TITLES = (
+    "Just a moment",       # English
+    "Checking your browser",
+    "Et øjeblik",          # Danish
+    "Einen Moment",        # German
+    "Un instant",          # French
+    "Un momento",          # Spanish
+    "Um momento",          # Portuguese
+    "Een moment",          # Dutch
+    "Un momento",          # Italian
+    "Bir an",              # Turkish
+    "Chwileczkę",          # Polish
+    "Подождите",           # Russian
+    "少々お待ちください",    # Japanese
+    "请稍候",              # Chinese (Simplified)
+)
 
 # Warm-up: max seconds to wait for Cloudflare to clear on first visit
 _WARMUP_TIMEOUT = 30
@@ -51,10 +69,14 @@ _POLL_INTERVAL = 2
 class HLTVClient:
     """HTTP client for HLTV using nodriver (real Chrome) for Cloudflare bypass.
 
-    Uses a single Chrome browser instance with an off-screen window.
-    On start(), navigates to the HLTV homepage and waits for Cloudflare
-    to clear. All subsequent fetches reuse the same browser tab
-    (navigating it to new URLs) so the clearance persists.
+    Uses a single Chrome browser instance with an off-screen window and
+    a pool of ``concurrent_tabs`` tabs. On start(), navigates to the HLTV
+    homepage and waits for Cloudflare to clear, then opens additional tabs
+    that share the browser's cookie jar.
+
+    ``fetch()`` acquires a tab from the pool, navigates it, and returns it.
+    ``fetch_many()`` dispatches all URLs concurrently via ``asyncio.gather()``,
+    with the tab pool naturally limiting concurrency to N simultaneous fetches.
 
     Usage:
         async with HLTVClient() as client:
@@ -62,14 +84,16 @@ class HLTVClient:
             results = await client.fetch_many(["url1", "url2", "url3"])
     """
 
-    def __init__(self, config: ScraperConfig | None = None):
+    def __init__(self, config: ScraperConfig | None = None, proxy_url: str | None = None):
         if config is None:
             config = ScraperConfig()
 
         self._config = config
+        self._proxy_url = proxy_url
         self.rate_limiter = RateLimiter(config)
         self._browser: nodriver.Browser | None = None
-        self._tab = None  # The single reused browser tab
+        self._tabs: list = []
+        self._tab_pool: asyncio.Queue | None = None
 
         # Request counters
         self._request_count = 0
@@ -79,21 +103,27 @@ class HLTVClient:
         # Override tenacity stop condition with config value
         self._patch_retry()
 
+    @property
+    def _tab(self):
+        """First tab, for backward compatibility."""
+        return self._tabs[0] if self._tabs else None
+
     async def start(self) -> None:
         """Launch Chrome off-screen and warm up Cloudflare trust.
 
         Navigates to an HLTV results page and polls until the Cloudflare
-        challenge clears (up to 30s). This ensures that the harder CF
-        protection on /results (and /stats) paths is solved before any
-        real fetching begins. The warm-up tab is saved and reused for
-        all subsequent fetches.
+        challenge clears (up to 30s). Then opens additional tabs (up to
+        ``concurrent_tabs`` total) that share the browser's CF cookies.
         """
+        browser_args = [
+            "--window-position=-32000,-32000",
+            "--window-size=800,600",
+        ]
+        if self._proxy_url:
+            browser_args.append(f"--proxy-server={self._proxy_url}")
         self._browser = await nodriver.start(
             headless=False,
-            browser_args=[
-                "--window-position=-32000,-32000",
-                "--window-size=800,600",
-            ],
+            browser_args=browser_args,
         )
 
         # Warm-up: visit a results page with gameType to match real fetch URLs
@@ -102,12 +132,12 @@ class HLTVClient:
             f"&gameType={self._config.game_type}"
         )
         logger.info("Warming up browser on %s ...", warmup_url)
-        self._tab = await self._browser.get(warmup_url)
+        first_tab = await self._browser.get(warmup_url)
         await asyncio.sleep(self._config.page_load_wait)
 
         elapsed = 0.0
         while elapsed < _WARMUP_TIMEOUT:
-            title = await self._tab.evaluate("document.title")
+            title = await first_tab.evaluate("document.title")
             if not any(sig in title for sig in _CHALLENGE_TITLES):
                 logger.info(
                     "Cloudflare cleared after %.1fs",
@@ -115,52 +145,52 @@ class HLTVClient:
                 )
                 # Let CF cookies settle before real fetches begin
                 await asyncio.sleep(1.0)
-                return
+                break
             await asyncio.sleep(_POLL_INTERVAL)
             elapsed += _POLL_INTERVAL
+        else:
+            logger.warning(
+                "Cloudflare challenge did not clear after %ds warm-up. "
+                "Proceeding anyway — fetches may retry.",
+                _WARMUP_TIMEOUT,
+            )
 
-        logger.warning(
-            "Cloudflare challenge did not clear after %ds warm-up. "
-            "Proceeding anyway — fetches may retry.",
-            _WARMUP_TIMEOUT,
-        )
+        # Build the tab pool
+        num_tabs = self._config.concurrent_tabs
+        self._tabs = [first_tab]
+        self._tab_pool = asyncio.Queue()
+        self._tab_pool.put_nowait(first_tab)
 
-    @retry(
-        retry=retry_if_exception_type(CloudflareChallenge),
-        wait=wait_exponential_jitter(initial=10, max=120, jitter=5),
-        stop=stop_after_attempt(5),  # overridden in _patch_retry
-        before_sleep=before_sleep_log(logger, logging.WARNING),
-        reraise=True,
-    )
-    async def fetch(self, url: str) -> str:
-        """Navigate the reused tab to a URL and return the page HTML.
+        # Additional tabs share the browser's cookie jar (CF clearance)
+        for i in range(1, num_tabs):
+            tab = await self._browser.get(warmup_url)
+            await asyncio.sleep(self._config.page_load_wait)
+            self._tabs.append(tab)
+            self._tab_pool.put_nowait(tab)
 
-        Rate-limits before each navigation, detects Cloudflare challenges
-        by page title, and retries with exponential backoff via tenacity.
+        if num_tabs > 1:
+            logger.info("Browser ready with %d tabs", num_tabs)
 
-        Args:
-            url: The full URL to fetch.
+    async def _fetch_with_tab(self, tab, url: str, content_marker: str | None = None) -> str:
+        """Navigate a specific tab to a URL and return the page HTML.
 
-        Returns:
-            The page HTML as a string.
-
-        Raises:
-            CloudflareChallenge: If Cloudflare challenge persists after retries.
-            HLTVFetchError: If the page content is empty or invalid.
+        Handles rate limiting, Cloudflare challenge detection/polling,
+        and page content validation. Does NOT handle retries — the
+        caller (``fetch()``) wraps this with tenacity.
         """
-        if self._browser is None or self._tab is None:
-            raise HLTVFetchError("Browser not started. Call start() first.", url=url)
-
         await self.rate_limiter.wait()
         self._request_count += 1
 
         try:
-            # Navigate the existing tab (preserves Cloudflare cookies)
-            await self._tab.get(url)
+            # Navigate the tab (preserves Cloudflare cookies)
+            await tab.get(url)
             await asyncio.sleep(self._config.page_load_wait)
 
             # Check for Cloudflare challenge via page title
-            title = await self._tab.evaluate("document.title")
+            # nodriver may return ExceptionDetails instead of str on error
+            title = await tab.evaluate("document.title")
+            if not isinstance(title, str):
+                title = ""
 
             if any(sig in title for sig in _CHALLENGE_TITLES):
                 # Poll until challenge clears on this same tab (up to 30s)
@@ -169,7 +199,9 @@ class HLTVClient:
                 while elapsed < self._config.challenge_wait:
                     await asyncio.sleep(_POLL_INTERVAL)
                     elapsed += _POLL_INTERVAL
-                    title = await self._tab.evaluate("document.title")
+                    title = await tab.evaluate("document.title")
+                    if not isinstance(title, str):
+                        title = ""
                     if not any(sig in title for sig in _CHALLENGE_TITLES):
                         logger.info("Challenge cleared after %.1fs", elapsed)
                         break
@@ -183,22 +215,61 @@ class HLTVClient:
                     )
 
             # Extract full HTML — retry extraction if page hasn't loaded yet
-            html = await self._tab.evaluate(
+            # nodriver may return ExceptionDetails instead of str on error
+            html = await tab.evaluate(
                 "document.documentElement.outerHTML"
             )
+            if not isinstance(html, str):
+                html = ""
 
-            if not html or len(html) < 10000:
+            if len(html) < 10000:
                 # Page may still be loading; wait and retry extraction
                 await asyncio.sleep(self._config.page_load_wait)
-                html = await self._tab.evaluate(
+                html = await tab.evaluate(
                     "document.documentElement.outerHTML"
                 )
+                if not isinstance(html, str):
+                    html = ""
 
-            if not html or len(html) < 10000:
-                raise HLTVFetchError(
-                    f"Response too short from {url} ({len(html or '')} chars)",
+            # Fallback: detect Cloudflare challenge by HTML content
+            # (catches localized titles not in _CHALLENGE_TITLES)
+            if html and "/cdn-cgi/challenge-platform/" in html and "cf-turnstile-response" in html:
+                self._challenge_count += 1
+                self.rate_limiter.backoff()
+                raise CloudflareChallenge(
+                    f"Cloudflare challenge detected in HTML on {url} (title: {title!r})",
                     url=url,
                 )
+
+            if len(html) < 10000:
+                raise HLTVFetchError(
+                    f"Response too short from {url} ({len(html)} chars)",
+                    url=url,
+                )
+
+            # Content marker check: verify page has expected dynamic content
+            if content_marker and content_marker not in html:
+                logger.debug(
+                    "Content marker %r not found on %s, waiting for render...",
+                    content_marker, url,
+                )
+                await asyncio.sleep(self._config.page_load_wait)
+                html = await tab.evaluate("document.documentElement.outerHTML")
+                if not isinstance(html, str):
+                    html = ""
+
+                if content_marker not in html:
+                    await asyncio.sleep(self._config.page_load_wait * 2)
+                    html = await tab.evaluate("document.documentElement.outerHTML")
+                    if not isinstance(html, str):
+                        html = ""
+
+                if content_marker not in html:
+                    raise HLTVFetchError(
+                        f"Content marker {content_marker!r} not found on {url} "
+                        f"after retries ({len(html)} chars)",
+                        url=url,
+                    )
 
         except CloudflareChallenge:
             raise
@@ -213,35 +284,73 @@ class HLTVClient:
         logger.debug("Fetched %s (%d chars)", url, len(html))
         return html
 
-    async def fetch_many(self, urls: list[str]) -> list[str | Exception]:
-        """Fetch multiple URLs sequentially using the reused tab.
+    @retry(
+        retry=retry_if_exception_type(CloudflareChallenge),
+        wait=wait_exponential_jitter(initial=10, max=120, jitter=5),
+        stop=stop_after_attempt(5),  # overridden in _patch_retry
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True,
+    )
+    async def fetch(self, url: str, content_marker: str | None = None) -> str:
+        """Fetch a URL using a tab from the pool.
 
-        Each URL is fetched via fetch() which navigates the same
-        browser tab. Failures are captured per-URL without aborting
-        the rest.
+        Acquires a tab, navigates it, and returns the tab to the pool.
+        On CloudflareChallenge, tenacity retries with exponential backoff;
+        the tab is returned to the pool between retries so other fetches
+        can proceed.
+
+        Args:
+            url: The full URL to fetch.
+            content_marker: Optional string that must appear in the HTML.
+                If provided and not found after retries, raises HLTVFetchError.
+
+        Returns:
+            The page HTML as a string.
+
+        Raises:
+            CloudflareChallenge: If Cloudflare challenge persists after retries.
+            HLTVFetchError: If the page content is empty or invalid.
+        """
+        if self._browser is None or not self._tabs:
+            raise HLTVFetchError("Browser not started. Call start() first.", url=url)
+
+        tab = await self._tab_pool.get()
+        try:
+            return await self._fetch_with_tab(tab, url, content_marker=content_marker)
+        finally:
+            self._tab_pool.put_nowait(tab)
+
+    async def fetch_many(self, urls: list[str], content_marker: str | None = None) -> list[str | Exception]:
+        """Fetch multiple URLs concurrently using the tab pool.
+
+        Dispatches all URLs via ``asyncio.gather()``. The tab pool
+        naturally limits concurrency to ``concurrent_tabs`` simultaneous
+        fetches. Failures are captured per-URL without aborting the rest.
 
         Args:
             urls: List of full URLs to fetch.
+            content_marker: Optional string that must appear in each page's HTML.
 
         Returns:
             List of results in the same order as urls. Each element is
             either the HTML string on success or the Exception on failure.
         """
-        results: list[str | Exception] = []
-        for url in urls:
+        async def _safe_fetch(url: str) -> str | Exception:
             try:
-                html = await self.fetch(url)
-                results.append(html)
+                return await self.fetch(url, content_marker=content_marker)
             except Exception as exc:
-                results.append(exc)
-        return results
+                return exc
+
+        results = await asyncio.gather(*[_safe_fetch(url) for url in urls])
+        return list(results)
 
     async def close(self) -> None:
         """Stop the Chrome browser."""
         if self._browser:
             self._browser.stop()
             self._browser = None
-            self._tab = None
+            self._tabs.clear()
+            self._tab_pool = None
 
     async def __aenter__(self) -> "HLTVClient":
         await self.start()
@@ -265,3 +374,46 @@ class HLTVClient:
     def _patch_retry(self) -> None:
         """Patch tenacity stop condition to use config.max_retries."""
         self.fetch.retry.stop = stop_after_attempt(self._config.max_retries)
+
+
+async def fetch_distributed(
+    clients: list[HLTVClient], urls: list[str], content_marker: str | None = None,
+) -> list[str | Exception]:
+    """Split URLs round-robin across clients, fetch in parallel, reassemble in order.
+
+    When only one client is provided, delegates directly to ``client.fetch_many()``.
+    With multiple clients, each gets a round-robin subset of URLs and fetches
+    concurrently via ``asyncio.gather()``.
+
+    Args:
+        clients: List of started HLTVClient instances.
+        urls: List of full URLs to fetch.
+        content_marker: Optional string that must appear in each page's HTML.
+
+    Returns:
+        List of results in the same order as *urls*. Each element is
+        either the HTML string on success or the Exception on failure.
+    """
+    if len(clients) == 1:
+        return await clients[0].fetch_many(urls, content_marker=content_marker)
+
+    n = len(clients)
+    buckets: list[list[tuple[int, str]]] = [[] for _ in range(n)]
+    for i, url in enumerate(urls):
+        buckets[i % n].append((i, url))
+
+    async def _fetch_bucket(
+        client: HLTVClient, indexed_urls: list[tuple[int, str]]
+    ) -> list[tuple[int, str | Exception]]:
+        results = await client.fetch_many([u for _, u in indexed_urls], content_marker=content_marker)
+        return [(idx, res) for (idx, _), res in zip(indexed_urls, results)]
+
+    all_indexed = await asyncio.gather(*[
+        _fetch_bucket(c, b) for c, b in zip(clients, buckets) if b
+    ])
+
+    out: list[str | Exception | None] = [None] * len(urls)
+    for group in all_indexed:
+        for idx, res in group:
+            out[idx] = res
+    return out

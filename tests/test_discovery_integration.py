@@ -35,7 +35,7 @@ async def test_discover_first_two_pages(tmp_path):
 
     try:
         async with HLTVClient(config) as client:
-            stats = await run_discovery(client, repo, storage, config)
+            stats = await run_discovery([client], repo, storage, config)
 
         # Verify stats
         assert stats["pages_fetched"] == 2
@@ -56,7 +56,7 @@ async def test_discover_first_two_pages(tmp_path):
 
         # Verify resume: run again, should skip both pages
         async with HLTVClient(config) as client2:
-            stats2 = await run_discovery(client2, repo, storage, config)
+            stats2 = await run_discovery([client2], repo, storage, config)
 
         assert stats2["pages_fetched"] == 0
         assert stats2["pages_skipped"] == 2

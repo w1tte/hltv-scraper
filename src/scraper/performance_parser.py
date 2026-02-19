@@ -154,7 +154,7 @@ def _parse_player_cards(
         # Player identity
         headline_a = box.select_one(".headline a[href]")
         if not headline_a:
-            logger.warning("Player card without .headline a[href], skipping")
+            logger.debug("Player card without .headline a[href], skipping")
             continue
 
         nick_el = box.select_one(".player-nick")

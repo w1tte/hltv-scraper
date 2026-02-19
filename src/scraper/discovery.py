@@ -80,7 +80,7 @@ def parse_results_page(html: str) -> list[DiscoveredMatch]:
 
 
 async def run_discovery(
-    client,           # HLTVClient -- not type-hinted to avoid circular import
+    clients,          # list[HLTVClient] -- uses clients[0] for sequential fetching
     repo,             # DiscoveryRepository
     storage,          # HtmlStorage
     config,           # ScraperConfig
@@ -92,13 +92,13 @@ async def run_discovery(
     For each offset from config.start_offset to config.max_offset (step 100):
     1. Check shutdown flag
     2. Skip if offset already in discovery_progress (resume support)
-    3. Fetch the results page via client.fetch()
+    3. Fetch the results page via clients[0].fetch()
     4. Parse entries via parse_results_page()
     5. In incremental mode, check for early termination (all matches known)
     6. Persist batch + mark offset complete via repo.persist_page()
 
     Args:
-        client: HLTVClient instance (must be started).
+        clients: List of HLTVClient instances (uses first one).
         repo: DiscoveryRepository instance.
         storage: HtmlStorage instance.
         config: ScraperConfig instance.
@@ -120,6 +120,7 @@ async def run_discovery(
         "errors": 0,
     }
 
+    prev_page_count = config.results_per_page  # assume full until proven otherwise
     for offset in range(config.start_offset, config.max_offset + 1, config.results_per_page):
         # Check shutdown flag
         if shutdown is not None and shutdown.is_set:
@@ -134,17 +135,30 @@ async def run_discovery(
         try:
             # 1. Fetch
             url = f"{config.base_url}/results?offset={offset}&gameType={config.game_type}"
-            html = await client.fetch(url)
+            html = await clients[0].fetch(url)
 
             # 2. Parse
             matches = parse_results_page(html)
 
             # 4. Validate entry count
             if len(matches) == 0:
+                # Check if previous page was a short page (end of results)
+                if stats["pages_fetched"] > 0 and prev_page_count < config.results_per_page:
+                    logger.info(
+                        "Offset %d: 0 entries (previous page had %d < %d). "
+                        "End of results reached.",
+                        offset, prev_page_count, config.results_per_page,
+                    )
+                    break
+
+                # Genuinely unexpected — dump HTML for debugging
+                from pathlib import Path
+                debug_path = Path(config.data_dir) / f"debug_offset_{offset}.html"
+                debug_path.write_text(html, encoding="utf-8")
                 logger.error(
                     "Offset %d: 0 entries found (possible Cloudflare issue). "
-                    "Stopping pagination.",
-                    offset,
+                    "HTML dumped to %s. Stopping pagination.",
+                    offset, debug_path,
                 )
                 stats["errors"] += 1
                 raise RuntimeError(
@@ -185,6 +199,7 @@ async def run_discovery(
             ]
             repo.persist_page(batch, offset)
 
+            prev_page_count = len(matches)
             stats["pages_fetched"] += 1
             stats["matches_found"] += len(matches)
             logger.info(

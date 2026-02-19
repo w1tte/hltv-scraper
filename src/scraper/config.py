@@ -14,7 +14,7 @@ class ScraperConfig:
     """
 
     # Rate limiting: delay between requests
-    min_delay: float = 0.8
+    min_delay: float = 0.5
     max_delay: float = 3.0
 
     # Adaptive backoff on challenge/error
@@ -30,10 +30,14 @@ class ScraperConfig:
     max_retries: int = 5
 
     # Seconds to wait after navigation for page to load
-    page_load_wait: float = 2.0
+    # Content marker checks catch under-loaded pages, so 1.5s is safe.
+    page_load_wait: float = 1.5
 
-    # Number of concurrent browser tabs for parallel fetching
-    concurrent_tabs: int = 3
+    # Number of browser tabs per instance
+    # Must be 1: nodriver's CDP routing mixes responses between concurrent
+    # tabs in the same browser, causing ~48% of perf/econ fetches to get
+    # wrong-page content. Use more workers instead for throughput.
+    concurrent_tabs: int = 1
 
     # Seconds to poll for Cloudflare challenge to clear during fetches
     challenge_wait: float = 30.0
@@ -47,7 +51,7 @@ class ScraperConfig:
 
     # Discovery pagination
     game_type: str = "CS2"           # Game filter: CS2, CSGO, or CS16
-    max_offset: int = 9900           # Last offset to paginate to (inclusive)
+    max_offset: int = 25000          # Last offset to paginate to (inclusive)
     results_per_page: int = 100      # Entries per results page (HLTV constant)
 
     # Match overview batch size
@@ -59,6 +63,10 @@ class ScraperConfig:
     # Maps per batch for performance+economy extraction
     perf_economy_batch_size: int = 10
 
+    # Proxy configuration
+    proxy_file: str | None = None      # Path to file with one proxy per line
+
     # Pipeline orchestration
     start_offset: int = 0              # Start offset for results pagination
     consecutive_failure_threshold: int = 3  # Halt pipeline after N consecutive failures
+    stage_poll_interval: float = 5.0   # Seconds between polls when downstream stage has no work

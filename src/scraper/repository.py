@@ -206,6 +206,7 @@ GET_PENDING_PERF_ECONOMY = """
     SELECT m.match_id, m.map_number, m.mapstatsid
     FROM maps m
     WHERE m.mapstatsid IS NOT NULL
+      AND m.perf_attempts < ?
       AND EXISTS (
         SELECT 1 FROM player_stats ps
         WHERE ps.match_id = m.match_id AND ps.map_number = m.map_number
@@ -385,15 +386,30 @@ class MatchRepository:
         rows = self.conn.execute(GET_PENDING_MAP_STATS, (limit,)).fetchall()
         return [dict(r) for r in rows]
 
-    def get_pending_perf_economy(self, limit: int = 10) -> list[dict]:
+    def get_pending_perf_economy(
+        self, limit: int = 10, max_attempts: int = 3,
+    ) -> list[dict]:
         """Return maps that have player_stats but no performance data yet.
 
         Finds maps where Phase 6 has run (player_stats rows exist) but
         Phase 7 hasn't (kpr is still NULL on at least one player row).
+        Maps that have already been attempted ``max_attempts`` times are
+        skipped to prevent infinite retry loops on persistent parse failures.
         Results are ordered by (match_id, map_number).
         """
-        rows = self.conn.execute(GET_PENDING_PERF_ECONOMY, (limit,)).fetchall()
+        rows = self.conn.execute(
+            GET_PENDING_PERF_ECONOMY, (max_attempts, limit),
+        ).fetchall()
         return [dict(r) for r in rows]
+
+    def increment_perf_attempts(self, match_id: int, map_number: int) -> None:
+        """Increment the perf_attempts counter for a map after a parse failure."""
+        with self.conn:
+            self.conn.execute(
+                "UPDATE maps SET perf_attempts = perf_attempts + 1 "
+                "WHERE match_id = ? AND map_number = ?",
+                (match_id, map_number),
+            )
 
     def get_valid_round_numbers(self, match_id: int, map_number: int) -> set[int]:
         """Return set of round numbers that exist in round_history for this map."""

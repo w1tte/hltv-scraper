@@ -214,7 +214,7 @@ class TestHappyPath:
         seed_match_with_map_stats(match_repo, SAMPLE_MATCH_ID, SAMPLE_MAPSTATSID)
 
         stats = await run_performance_economy(
-            mock_client, match_repo, storage, config
+            [mock_client], match_repo, storage, config
         )
 
         assert stats["batch_size"] == 1
@@ -229,7 +229,7 @@ class TestHappyPath:
     ):
         """After run, player_stats rows have non-None kpr."""
         seed_match_with_map_stats(match_repo, SAMPLE_MATCH_ID, SAMPLE_MAPSTATSID)
-        await run_performance_economy(mock_client, match_repo, storage, config)
+        await run_performance_economy([mock_client], match_repo, storage, config)
 
         rows = match_repo.get_player_stats(SAMPLE_MATCH_ID, map_number=1)
         assert len(rows) == 10
@@ -244,7 +244,7 @@ class TestHappyPath:
     ):
         """After run, player_stats rows have non-None dpr."""
         seed_match_with_map_stats(match_repo, SAMPLE_MATCH_ID, SAMPLE_MAPSTATSID)
-        await run_performance_economy(mock_client, match_repo, storage, config)
+        await run_performance_economy([mock_client], match_repo, storage, config)
 
         rows = match_repo.get_player_stats(SAMPLE_MATCH_ID, map_number=1)
         for row in rows:
@@ -258,7 +258,7 @@ class TestHappyPath:
     ):
         """After run, rows have mk_rating non-None."""
         seed_match_with_map_stats(match_repo, SAMPLE_MATCH_ID, SAMPLE_MAPSTATSID)
-        await run_performance_economy(mock_client, match_repo, storage, config)
+        await run_performance_economy([mock_client], match_repo, storage, config)
 
         rows = match_repo.get_player_stats(SAMPLE_MATCH_ID, map_number=1)
         for row in rows:
@@ -272,7 +272,7 @@ class TestHappyPath:
     ):
         """After run, economy table has rows for this match/map."""
         seed_match_with_map_stats(match_repo, SAMPLE_MATCH_ID, SAMPLE_MAPSTATSID)
-        await run_performance_economy(mock_client, match_repo, storage, config)
+        await run_performance_economy([mock_client], match_repo, storage, config)
 
         rows = match_repo.conn.execute(
             "SELECT * FROM economy WHERE match_id = ? AND map_number = ?",
@@ -286,7 +286,7 @@ class TestHappyPath:
     ):
         """Economy rows contain entries for 2 different team_ids."""
         seed_match_with_map_stats(match_repo, SAMPLE_MATCH_ID, SAMPLE_MAPSTATSID)
-        await run_performance_economy(mock_client, match_repo, storage, config)
+        await run_performance_economy([mock_client], match_repo, storage, config)
 
         rows = match_repo.conn.execute(
             "SELECT DISTINCT team_id FROM economy "
@@ -301,7 +301,7 @@ class TestHappyPath:
     ):
         """After run, kill_matrix table has rows for this match/map."""
         seed_match_with_map_stats(match_repo, SAMPLE_MATCH_ID, SAMPLE_MAPSTATSID)
-        await run_performance_economy(mock_client, match_repo, storage, config)
+        await run_performance_economy([mock_client], match_repo, storage, config)
 
         rows = match_repo.conn.execute(
             "SELECT * FROM kill_matrix WHERE match_id = ? AND map_number = ?",
@@ -315,7 +315,7 @@ class TestHappyPath:
     ):
         """Kill matrix has entries for 'all', 'first_kill', and 'awp' types."""
         seed_match_with_map_stats(match_repo, SAMPLE_MATCH_ID, SAMPLE_MAPSTATSID)
-        await run_performance_economy(mock_client, match_repo, storage, config)
+        await run_performance_economy([mock_client], match_repo, storage, config)
 
         rows = match_repo.conn.execute(
             "SELECT DISTINCT matrix_type FROM kill_matrix "
@@ -337,7 +337,7 @@ class TestHappyPath:
         before_by_pid = {s["player_id"]: s for s in before}
 
         # Run Phase 7
-        await run_performance_economy(mock_client, match_repo, storage, config)
+        await run_performance_economy([mock_client], match_repo, storage, config)
 
         # Verify after Phase 7
         after = match_repo.get_player_stats(SAMPLE_MATCH_ID, map_number=1)
@@ -396,7 +396,7 @@ class TestEconomyFKFiltering:
     ):
         """Every economy round_number exists in round_history."""
         seed_match_with_map_stats(match_repo, SAMPLE_MATCH_ID, SAMPLE_MAPSTATSID)
-        await run_performance_economy(mock_client, match_repo, storage, config)
+        await run_performance_economy([mock_client], match_repo, storage, config)
 
         econ_rounds = match_repo.conn.execute(
             "SELECT DISTINCT round_number FROM economy "
@@ -427,7 +427,7 @@ class TestEconomyFKFiltering:
 
         # Run -- should NOT raise FK errors
         stats = await run_performance_economy(
-            mock_client, match_repo, storage, config
+            [mock_client], match_repo, storage, config
         )
         assert stats["parsed"] == 1
 
@@ -473,7 +473,7 @@ class TestFetchFailure:
         client.fetch_many = AsyncMock(side_effect=_fetch_many)
 
         stats = await run_performance_economy(
-            client, match_repo, storage, config
+            [client], match_repo, storage, config
         )
 
         assert stats["fetch_errors"] >= 1
@@ -501,7 +501,7 @@ class TestFetchFailure:
 
         client.fetch_many = AsyncMock(side_effect=_fetch_many)
 
-        await run_performance_economy(client, match_repo, storage, config)
+        await run_performance_economy([client], match_repo, storage, config)
 
         # kpr still NULL
         rows = match_repo.get_player_stats(SAMPLE_MATCH_ID, map_number=1)
@@ -624,7 +624,7 @@ class TestParseFailure:
         client.fetch_many = AsyncMock(side_effect=_fetch_many)
 
         stats = await run_performance_economy(
-            client, match_repo, storage, config
+            [client], match_repo, storage, config
         )
 
         assert stats["fetched"] == 2
@@ -641,7 +641,7 @@ class TestNoPendingMaps:
     ):
         """No seeded data => batch_size=0, no fetches."""
         stats = await run_performance_economy(
-            mock_client, match_repo, storage, config
+            [mock_client], match_repo, storage, config
         )
 
         assert stats["batch_size"] == 0
@@ -675,7 +675,7 @@ class TestAlreadyProcessed:
 
         # Orchestrator returns batch_size=0
         stats = await run_performance_economy(
-            mock_client, match_repo, storage, config
+            [mock_client], match_repo, storage, config
         )
         assert stats["batch_size"] == 0
 

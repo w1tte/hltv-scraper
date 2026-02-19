@@ -1,7 +1,12 @@
 """Tests for pipeline utilities and the run_pipeline orchestrator.
 
-Tests the three utility classes (ShutdownHandler, ConsecutiveFailureTracker,
+Tests the utility classes (ShutdownHandler, ConsecutiveFailureTracker,
 ProgressTracker) and the run_pipeline function with mocked stage orchestrators.
+
+Note: With AsyncMock, asyncio tasks execute effectively sequentially (mocks
+don't yield to the event loop), so execution order is deterministic.  Each
+concurrent stage does an extra "recheck" call when batch_size=0 and its
+upstream is already done, for race condition safety.
 """
 
 import asyncio
@@ -15,6 +20,7 @@ from scraper.pipeline import (
     ConsecutiveFailureTracker,
     ProgressTracker,
     ShutdownHandler,
+    StageCoordinator,
     run_pipeline,
 )
 
@@ -146,6 +152,28 @@ class TestShutdownHandler:
 
 
 # ---------------------------------------------------------------------------
+# StageCoordinator
+# ---------------------------------------------------------------------------
+
+
+class TestStageCoordinator:
+    """Tests for StageCoordinator."""
+
+    def test_initial_state(self):
+        """All stages start as not done."""
+        coord = StageCoordinator()
+        for stage in ["discovery", "overview", "map_stats", "perf_economy"]:
+            assert coord.is_done(stage) is False
+
+    def test_mark_done(self):
+        """Marking a stage done makes is_done return True for that stage only."""
+        coord = StageCoordinator()
+        coord.mark_done("discovery")
+        assert coord.is_done("discovery") is True
+        assert coord.is_done("overview") is False
+
+
+# ---------------------------------------------------------------------------
 # run_pipeline
 # ---------------------------------------------------------------------------
 
@@ -172,8 +200,22 @@ def _make_discovery_stats(matches_found=0, new_matches=0, pages_fetched=0):
     }
 
 
+def _make_clients():
+    """Build a clients dict with lists of MagicMock values."""
+    return {
+        "overview": [MagicMock()],
+        "map_stats": [MagicMock()],
+        "perf_economy": [MagicMock()],
+    }
+
+
 class TestRunPipeline:
-    """Tests for the run_pipeline function with mocked orchestrators."""
+    """Tests for the run_pipeline function with mocked orchestrators.
+
+    With AsyncMock, concurrent stages execute effectively sequentially.
+    Each stage that finds no work (batch_size=0) with upstream already done
+    does one recheck call, so mocks are called twice in the simplest case.
+    """
 
     @pytest.mark.asyncio
     @patch("scraper.pipeline.run_performance_economy", new_callable=AsyncMock)
@@ -189,13 +231,13 @@ class TestRunPipeline:
         mock_map_stats.return_value = _make_stats(batch_size=0)
         mock_perf_econ.return_value = _make_stats(batch_size=0)
 
-        config = ScraperConfig()
+        config = ScraperConfig(stage_poll_interval=0.01)
         shutdown = ShutdownHandler()
         discovery_repo = MagicMock()
         discovery_repo.reset_failed_matches.return_value = 0
 
         results = await run_pipeline(
-            client=MagicMock(),
+            clients=_make_clients(),
             match_repo=MagicMock(),
             discovery_repo=discovery_repo,
             storage=MagicMock(),
@@ -204,9 +246,10 @@ class TestRunPipeline:
         )
 
         mock_discovery.assert_called_once()
-        mock_overview.assert_called_once()
-        mock_map_stats.assert_called_once()
-        mock_perf_econ.assert_called_once()
+        # Each concurrent stage: initial call + recheck = 2 calls minimum
+        assert mock_overview.call_count >= 1
+        assert mock_map_stats.call_count >= 1
+        assert mock_perf_econ.call_count >= 1
         assert results["halted"] is False
 
     @pytest.mark.asyncio
@@ -221,20 +264,22 @@ class TestRunPipeline:
         mock_discovery.return_value = _make_discovery_stats(matches_found=5, new_matches=5)
         # First call: work to do (batch_size=5, parsed=5)
         # Second call: no more work (batch_size=0)
+        # Third call: recheck (batch_size=0)
         mock_overview.side_effect = [
             _make_stats(batch_size=5, fetched=5, parsed=5),
+            _make_stats(batch_size=0),
             _make_stats(batch_size=0),
         ]
         mock_map_stats.return_value = _make_stats(batch_size=0)
         mock_perf_econ.return_value = _make_stats(batch_size=0)
 
-        config = ScraperConfig()
+        config = ScraperConfig(stage_poll_interval=0.01)
         shutdown = ShutdownHandler()
         discovery_repo = MagicMock()
         discovery_repo.reset_failed_matches.return_value = 0
 
         results = await run_pipeline(
-            client=MagicMock(),
+            clients=_make_clients(),
             match_repo=MagicMock(),
             discovery_repo=discovery_repo,
             storage=MagicMock(),
@@ -242,7 +287,7 @@ class TestRunPipeline:
             shutdown=shutdown,
         )
 
-        assert mock_overview.call_count == 2
+        assert mock_overview.call_count == 3
         assert results["overview"]["parsed"] == 5
         assert results["halted"] is False
 
@@ -263,13 +308,13 @@ class TestRunPipeline:
         mock_map_stats.return_value = _make_stats(batch_size=0)
         mock_perf_econ.return_value = _make_stats(batch_size=0)
 
-        config = ScraperConfig(consecutive_failure_threshold=3)
+        config = ScraperConfig(consecutive_failure_threshold=3, stage_poll_interval=0.01)
         shutdown = ShutdownHandler()
         discovery_repo = MagicMock()
         discovery_repo.reset_failed_matches.return_value = 0
 
         results = await run_pipeline(
-            client=MagicMock(),
+            clients=_make_clients(),
             match_repo=MagicMock(),
             discovery_repo=discovery_repo,
             storage=MagicMock(),
@@ -289,14 +334,14 @@ class TestRunPipeline:
         self, mock_discovery, mock_overview, mock_map_stats, mock_perf_econ
     ):
         """Pipeline exits quickly when shutdown is already set."""
-        config = ScraperConfig()
+        config = ScraperConfig(stage_poll_interval=0.01)
         shutdown = ShutdownHandler()
         shutdown._event.set()  # Pre-set shutdown
         discovery_repo = MagicMock()
         discovery_repo.reset_failed_matches.return_value = 0
 
         results = await run_pipeline(
-            client=MagicMock(),
+            clients=_make_clients(),
             match_repo=MagicMock(),
             discovery_repo=discovery_repo,
             storage=MagicMock(),
@@ -324,13 +369,13 @@ class TestRunPipeline:
         mock_map_stats.return_value = _make_stats(batch_size=0)
         mock_perf_econ.return_value = _make_stats(batch_size=0)
 
-        config = ScraperConfig()
+        config = ScraperConfig(stage_poll_interval=0.01)
         shutdown = ShutdownHandler()
         discovery_repo = MagicMock()
         discovery_repo.reset_failed_matches.return_value = 2
 
         await run_pipeline(
-            client=MagicMock(),
+            clients=_make_clients(),
             match_repo=MagicMock(),
             discovery_repo=discovery_repo,
             storage=MagicMock(),
@@ -355,12 +400,12 @@ class TestRunPipeline:
         mock_map_stats.return_value = _make_stats(batch_size=0)
         mock_perf_econ.return_value = _make_stats(batch_size=0)
 
-        config = ScraperConfig()
+        config = ScraperConfig(stage_poll_interval=0.01)
         shutdown = ShutdownHandler()
         discovery_repo = MagicMock()
 
         await run_pipeline(
-            client=MagicMock(),
+            clients=_make_clients(),
             match_repo=MagicMock(),
             discovery_repo=discovery_repo,
             storage=MagicMock(),
@@ -381,26 +426,28 @@ class TestRunPipeline:
     ):
         """Pipeline accumulates parsed/failed counts across multiple loop iterations."""
         mock_discovery.return_value = _make_discovery_stats(matches_found=10, new_matches=10)
-        # Two overview batches, then done
+        # Two overview batches, then done + recheck
         mock_overview.side_effect = [
             _make_stats(batch_size=5, fetched=5, parsed=4, failed=1),
             _make_stats(batch_size=3, fetched=3, parsed=3, failed=0),
             _make_stats(batch_size=0),
+            _make_stats(batch_size=0),  # recheck
         ]
-        # Two map_stats batches, then done
+        # Map stats batch + done + recheck
         mock_map_stats.side_effect = [
             _make_stats(batch_size=4, fetched=4, parsed=4, failed=0),
             _make_stats(batch_size=0),
+            _make_stats(batch_size=0),  # recheck
         ]
         mock_perf_econ.return_value = _make_stats(batch_size=0)
 
-        config = ScraperConfig()
+        config = ScraperConfig(stage_poll_interval=0.01)
         shutdown = ShutdownHandler()
         discovery_repo = MagicMock()
         discovery_repo.reset_failed_matches.return_value = 0
 
         results = await run_pipeline(
-            client=MagicMock(),
+            clients=_make_clients(),
             match_repo=MagicMock(),
             discovery_repo=discovery_repo,
             storage=MagicMock(),
@@ -427,13 +474,13 @@ class TestRunPipeline:
         mock_map_stats.return_value = _make_stats(batch_size=0)
         mock_perf_econ.return_value = _make_stats(batch_size=0)
 
-        config = ScraperConfig()
+        config = ScraperConfig(stage_poll_interval=0.01)
         shutdown = ShutdownHandler()
         discovery_repo = MagicMock()
         discovery_repo.reset_failed_matches.return_value = 0
 
         results = await run_pipeline(
-            client=MagicMock(),
+            clients=_make_clients(),
             match_repo=MagicMock(),
             discovery_repo=discovery_repo,
             storage=MagicMock(),

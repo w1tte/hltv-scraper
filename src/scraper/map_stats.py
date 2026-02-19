@@ -10,6 +10,7 @@ parse_map_stats(), and persists player_stats + round_history to the DB.
 import logging
 from datetime import datetime, timezone
 
+from scraper.http_client import fetch_distributed
 from scraper.map_stats_parser import parse_map_stats
 from scraper.models import PlayerStatsModel, RoundHistoryModel
 from scraper.validation import check_player_count, validate_batch
@@ -21,7 +22,7 @@ MAP_STATS_URL_TEMPLATE = "/stats/matches/mapstatsid/{mapstatsid}/x"
 
 
 async def run_map_stats(
-    client,         # HLTVClient
+    clients,        # list[HLTVClient]
     match_repo,     # MatchRepository
     storage,        # HtmlStorage
     config,         # ScraperConfig
@@ -35,7 +36,7 @@ async def run_map_stats(
     and others continue).
 
     Args:
-        client: HLTVClient instance (must be started).
+        clients: List of HLTVClient instances (must be started).
         match_repo: MatchRepository instance.
         storage: HtmlStorage instance.
         config: ScraperConfig instance.
@@ -66,7 +67,7 @@ async def run_map_stats(
         config.base_url + MAP_STATS_URL_TEMPLATE.format(mapstatsid=entry["mapstatsid"])
         for entry in pending
     ]
-    results = await client.fetch_many(urls)
+    results = await fetch_distributed(clients, urls, content_marker="match-info-box")
 
     fetched_entries: list[dict] = []
     for entry, result in zip(pending, results):
@@ -192,8 +193,8 @@ async def run_map_stats(
             )
             stats["parsed"] += 1
             logger.info(
-                "Parsed and persisted mapstatsid %d (match %d, map %d)",
-                mapstatsid, match_id, map_number,
+                "Parsed and persisted mapstatsid %d (match %d, map %d) (https://www.hltv.org/matches/%d)",
+                mapstatsid, match_id, map_number, match_id,
             )
 
         except Exception as exc:

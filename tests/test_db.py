@@ -62,7 +62,7 @@ class TestDatabaseMigrations:
         """After initialize(), get_schema_version() returns latest migration version."""
         db = Database(tmp_path / "test.db")
         db.initialize()
-        assert db.get_schema_version() == 7
+        assert db.get_schema_version() == 8
         db.close()
 
     def test_database_connect_without_initialize(self, tmp_path):
@@ -84,7 +84,7 @@ class TestDatabaseMigrations:
         db = Database(tmp_path / "test.db")
         db.connect()
         first = db.apply_migrations()
-        assert first == 7  # 001-005 + 006_drop_match_players + 007_cs2_only_rating
+        assert first == 8  # 001-007 + 008_perf_attempts
         second = db.apply_migrations()
         assert second == 0
         db.close()
@@ -140,7 +140,7 @@ class TestDatabaseContextManager:
         with Database(db_path) as db:
             assert db.conn is not None
             db.apply_migrations()
-            assert db.get_schema_version() == 7
+            assert db.get_schema_version() == 8
         # After exiting context, connection should be closed
         assert db._conn is None
 
