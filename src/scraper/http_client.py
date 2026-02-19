@@ -171,12 +171,25 @@ class HLTVClient:
         if num_tabs > 1:
             logger.info("Browser ready with %d tabs", num_tabs)
 
-    async def _fetch_with_tab(self, tab, url: str, content_marker: str | None = None) -> str:
+    async def _fetch_with_tab(
+        self, tab, url: str,
+        content_marker: str | None = None,
+        ready_selector: str | None = None,
+    ) -> str:
         """Navigate a specific tab to a URL and return the page HTML.
 
         Handles rate limiting, Cloudflare challenge detection/polling,
         and page content validation. Does NOT handle retries — the
         caller (``fetch()``) wraps this with tenacity.
+
+        Args:
+            tab: The browser tab to use.
+            url: The full URL to fetch.
+            content_marker: Optional string that must appear in the HTML text.
+            ready_selector: Optional CSS selector that must exist in the DOM
+                before the page is considered loaded.  Uses
+                ``document.querySelector()`` to check the live DOM, which is
+                more reliable than text-matching the serialised HTML.
         """
         await self.rate_limiter.wait()
         self._request_count += 1
@@ -213,6 +226,10 @@ class HLTVClient:
                         f"Cloudflare challenge on {url} (title: {title!r})",
                         url=url,
                     )
+
+            # Wait for ready_selector in the live DOM before extracting HTML
+            if ready_selector:
+                await self._wait_for_selector(tab, url, ready_selector)
 
             # Extract full HTML — retry extraction if page hasn't loaded yet
             # nodriver may return ExceptionDetails instead of str on error
@@ -284,6 +301,28 @@ class HLTVClient:
         logger.debug("Fetched %s (%d chars)", url, len(html))
         return html
 
+    async def _wait_for_selector(
+        self, tab, url: str, selector: str, timeout: float = 15.0,
+    ) -> None:
+        """Poll the live DOM until a CSS selector matches an element.
+
+        Raises HLTVFetchError if the selector is not found within *timeout*.
+        """
+        js = f"!!document.querySelector({selector!r})"
+        elapsed = 0.0
+        interval = 0.5
+        while elapsed < timeout:
+            found = await tab.evaluate(js)
+            if found is True:
+                return
+            await asyncio.sleep(interval)
+            elapsed += interval
+        raise HLTVFetchError(
+            f"Ready selector {selector!r} not found on {url} "
+            f"after {timeout:.0f}s",
+            url=url,
+        )
+
     @retry(
         retry=retry_if_exception_type(CloudflareChallenge),
         wait=wait_exponential_jitter(initial=10, max=120, jitter=5),
@@ -291,7 +330,11 @@ class HLTVClient:
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
-    async def fetch(self, url: str, content_marker: str | None = None) -> str:
+    async def fetch(
+        self, url: str,
+        content_marker: str | None = None,
+        ready_selector: str | None = None,
+    ) -> str:
         """Fetch a URL using a tab from the pool.
 
         Acquires a tab, navigates it, and returns the tab to the pool.
@@ -303,6 +346,8 @@ class HLTVClient:
             url: The full URL to fetch.
             content_marker: Optional string that must appear in the HTML.
                 If provided and not found after retries, raises HLTVFetchError.
+            ready_selector: Optional CSS selector that must exist in the
+                live DOM before the page is considered loaded.
 
         Returns:
             The page HTML as a string.
@@ -316,11 +361,17 @@ class HLTVClient:
 
         tab = await self._tab_pool.get()
         try:
-            return await self._fetch_with_tab(tab, url, content_marker=content_marker)
+            return await self._fetch_with_tab(
+                tab, url, content_marker=content_marker, ready_selector=ready_selector,
+            )
         finally:
             self._tab_pool.put_nowait(tab)
 
-    async def fetch_many(self, urls: list[str], content_marker: str | None = None) -> list[str | Exception]:
+    async def fetch_many(
+        self, urls: list[str],
+        content_marker: str | None = None,
+        ready_selector: str | None = None,
+    ) -> list[str | Exception]:
         """Fetch multiple URLs concurrently using the tab pool.
 
         Dispatches all URLs via ``asyncio.gather()``. The tab pool
@@ -330,6 +381,8 @@ class HLTVClient:
         Args:
             urls: List of full URLs to fetch.
             content_marker: Optional string that must appear in each page's HTML.
+            ready_selector: Optional CSS selector that must exist in the
+                live DOM before each page is considered loaded.
 
         Returns:
             List of results in the same order as urls. Each element is
@@ -337,7 +390,7 @@ class HLTVClient:
         """
         async def _safe_fetch(url: str) -> str | Exception:
             try:
-                return await self.fetch(url, content_marker=content_marker)
+                return await self.fetch(url, content_marker=content_marker, ready_selector=ready_selector)
             except Exception as exc:
                 return exc
 
@@ -345,9 +398,14 @@ class HLTVClient:
         return list(results)
 
     async def close(self) -> None:
-        """Stop the Chrome browser."""
+        """Stop the Chrome browser and clean up subprocess transports."""
         if self._browser:
-            self._browser.stop()
+            try:
+                self._browser.stop()
+            except Exception:
+                pass
+            # Give the event loop a chance to process transport cleanup
+            await asyncio.sleep(0.5)
             self._browser = None
             self._tabs.clear()
             self._tab_pool = None
@@ -377,7 +435,9 @@ class HLTVClient:
 
 
 async def fetch_distributed(
-    clients: list[HLTVClient], urls: list[str], content_marker: str | None = None,
+    clients: list[HLTVClient], urls: list[str],
+    content_marker: str | None = None,
+    ready_selector: str | None = None,
 ) -> list[str | Exception]:
     """Split URLs round-robin across clients, fetch in parallel, reassemble in order.
 
@@ -389,13 +449,17 @@ async def fetch_distributed(
         clients: List of started HLTVClient instances.
         urls: List of full URLs to fetch.
         content_marker: Optional string that must appear in each page's HTML.
+        ready_selector: Optional CSS selector that must exist in the live DOM
+            before each page is considered loaded.
 
     Returns:
         List of results in the same order as *urls*. Each element is
         either the HTML string on success or the Exception on failure.
     """
+    if not clients:
+        raise ValueError("fetch_distributed requires at least one client")
     if len(clients) == 1:
-        return await clients[0].fetch_many(urls, content_marker=content_marker)
+        return await clients[0].fetch_many(urls, content_marker=content_marker, ready_selector=ready_selector)
 
     n = len(clients)
     buckets: list[list[tuple[int, str]]] = [[] for _ in range(n)]
@@ -405,7 +469,9 @@ async def fetch_distributed(
     async def _fetch_bucket(
         client: HLTVClient, indexed_urls: list[tuple[int, str]]
     ) -> list[tuple[int, str | Exception]]:
-        results = await client.fetch_many([u for _, u in indexed_urls], content_marker=content_marker)
+        results = await client.fetch_many(
+            [u for _, u in indexed_urls], content_marker=content_marker, ready_selector=ready_selector,
+        )
         return [(idx, res) for (idx, _), res in zip(indexed_urls, results)]
 
     all_indexed = await asyncio.gather(*[

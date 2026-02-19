@@ -81,6 +81,8 @@ UPSERT_PLAYER_STATS = """
         kpr, dpr,
         opening_kills, opening_deaths, multi_kills, clutch_wins,
         traded_deaths, round_swing, mk_rating,
+        e_kills, e_deaths, e_hs_kills, e_kd_diff, e_adr, e_kast,
+        e_opening_kills, e_opening_deaths, e_fk_diff, e_traded_deaths,
         scraped_at, updated_at, source_url, parser_version
     ) VALUES (
         :match_id, :map_number, :player_id, :player_name, :team_id,
@@ -89,6 +91,8 @@ UPSERT_PLAYER_STATS = """
         :kpr, :dpr,
         :opening_kills, :opening_deaths, :multi_kills, :clutch_wins,
         :traded_deaths, :round_swing, :mk_rating,
+        :e_kills, :e_deaths, :e_hs_kills, :e_kd_diff, :e_adr, :e_kast,
+        :e_opening_kills, :e_opening_deaths, :e_fk_diff, :e_traded_deaths,
         :scraped_at, :scraped_at, :source_url, :parser_version
     )
     ON CONFLICT(match_id, map_number, player_id) DO UPDATE SET
@@ -113,6 +117,16 @@ UPSERT_PLAYER_STATS = """
         traded_deaths  = excluded.traded_deaths,
         round_swing    = excluded.round_swing,
         mk_rating      = excluded.mk_rating,
+        e_kills        = excluded.e_kills,
+        e_deaths       = excluded.e_deaths,
+        e_hs_kills     = excluded.e_hs_kills,
+        e_kd_diff      = excluded.e_kd_diff,
+        e_adr          = excluded.e_adr,
+        e_kast         = excluded.e_kast,
+        e_opening_kills  = excluded.e_opening_kills,
+        e_opening_deaths = excluded.e_opening_deaths,
+        e_fk_diff      = excluded.e_fk_diff,
+        e_traded_deaths  = excluded.e_traded_deaths,
         updated_at     = excluded.scraped_at,
         source_url     = excluded.source_url,
         parser_version = excluded.parser_version

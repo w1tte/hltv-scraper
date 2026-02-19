@@ -90,7 +90,7 @@ def mock_client():
 
     client.fetch = AsyncMock(side_effect=fetch_side_effect)
 
-    async def _fetch_many(urls):
+    async def _fetch_many(urls, **kwargs):
         results = []
         for url in urls:
             try:
@@ -460,7 +460,7 @@ class TestFetchFailure:
         client = MagicMock()
         client.fetch = AsyncMock(side_effect=Exception("Connection timeout"))
 
-        async def _fetch_many(urls):
+        async def _fetch_many(urls, **kwargs):
             results = []
             for url in urls:
                 try:
@@ -489,7 +489,7 @@ class TestFetchFailure:
         client = MagicMock()
         client.fetch = AsyncMock(side_effect=Exception("Connection timeout"))
 
-        async def _fetch_many(urls):
+        async def _fetch_many(urls, **kwargs):
             results = []
             for url in urls:
                 try:
@@ -611,7 +611,7 @@ class TestParseFailure:
         client = MagicMock()
         client.fetch = AsyncMock(side_effect=fetch_side_effect)
 
-        async def _fetch_many(urls):
+        async def _fetch_many(urls, **kwargs):
             results = []
             for url in urls:
                 try:
@@ -705,7 +705,7 @@ class TestQuarantine:
             side_effect=patched_parse_econ,
         ):
             stats = await run_performance_economy(
-                mock_client, match_repo, storage, config
+                [mock_client], match_repo, storage, config
             )
 
         # Map should still parse successfully (partial economy data)

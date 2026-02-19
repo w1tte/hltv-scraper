@@ -67,7 +67,7 @@ async def run_map_stats(
         config.base_url + MAP_STATS_URL_TEMPLATE.format(mapstatsid=entry["mapstatsid"])
         for entry in pending
     ]
-    results = await fetch_distributed(clients, urls, content_marker="match-info-box")
+    results = await fetch_distributed(clients, urls, ready_selector=".stats-table.totalstats td.st-player")
 
     fetched_entries: list[dict] = []
     for entry, result in zip(pending, results):
@@ -136,6 +136,16 @@ async def run_map_stats(
                     "traded_deaths": ps.traded_deaths,
                     "round_swing": ps.round_swing,
                     "mk_rating": None,  # Phase 7 -- performance page
+                    "e_kills": ps.e_kills,
+                    "e_deaths": ps.e_deaths,
+                    "e_hs_kills": ps.e_hs_kills,
+                    "e_kd_diff": ps.e_kd_diff,
+                    "e_adr": ps.e_adr,
+                    "e_kast": ps.e_kast,
+                    "e_opening_kills": ps.e_opening_kills,
+                    "e_opening_deaths": ps.e_opening_deaths,
+                    "e_fk_diff": ps.e_fk_diff,
+                    "e_traded_deaths": ps.e_traded_deaths,
                     "scraped_at": now,
                     "source_url": source_url,
                     "parser_version": PARSER_VERSION,

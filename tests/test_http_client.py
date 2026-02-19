@@ -584,7 +584,7 @@ async def test_fetch_distributed_preserves_order():
     async def make_client(label):
         client = MagicMock(spec=HLTVClient)
 
-        async def fake_fetch_many(urls, content_marker=None):
+        async def fake_fetch_many(urls, content_marker=None, ready_selector=None):
             return [f"{label}:{url}" for url in urls]
 
         client.fetch_many = AsyncMock(side_effect=fake_fetch_many)
@@ -634,7 +634,7 @@ async def test_fetch_distributed_captures_errors():
     """Verify per-URL errors are captured even when distributed."""
     err = Exception("fail")
 
-    async def fetch_many_with_error(urls, content_marker=None):
+    async def fetch_many_with_error(urls, content_marker=None, ready_selector=None):
         return [err if "bad" in u else f"ok:{u}" for u in urls]
 
     c1 = MagicMock(spec=HLTVClient)

@@ -273,12 +273,28 @@ async def async_main(args: argparse.Namespace) -> None:
 
 def main() -> None:
     """Sync entry point for the hltv-scraper console script."""
+    import sys
+
+    # Suppress nodriver's unclosed transport errors on Windows shutdown.
+    # These are harmless "Exception ignored in __del__" from asyncio pipe
+    # transports that fire after the event loop closes Chrome subprocesses.
+    _original_hook = sys.unraisablehook
+
+    def _quiet_transport_cleanup(unraisable):
+        if unraisable.object and "Transport" in type(unraisable.object).__name__:
+            return  # Silently ignore transport cleanup errors
+        _original_hook(unraisable)
+
+    sys.unraisablehook = _quiet_transport_cleanup
+
     parser = build_parser()
     args = parser.parse_args()
     try:
         asyncio.run(async_main(args))
     except KeyboardInterrupt:
         pass  # Already handled by ShutdownHandler
+    finally:
+        sys.unraisablehook = _original_hook
 
 
 if __name__ == "__main__":

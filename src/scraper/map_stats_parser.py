@@ -49,6 +49,17 @@ class PlayerStats:
     clutch_wins: int
     traded_deaths: int
     round_swing: float
+    # Eco-adjusted stats (None for Rating 2.0 matches)
+    e_kills: int | None = None
+    e_deaths: int | None = None
+    e_hs_kills: int | None = None
+    e_kd_diff: int | None = None
+    e_adr: float | None = None
+    e_kast: float | None = None
+    e_opening_kills: int | None = None
+    e_opening_deaths: int | None = None
+    e_fk_diff: int | None = None
+    e_traded_deaths: int | None = None
 
 
 @dataclass
@@ -307,6 +318,12 @@ def _parse_percentage(text: str) -> float:
         return 0.0
 
 
+def _is_eco_null(text: str) -> bool:
+    """Check if an eco-adjusted value is null/unavailable (Rating 2.0)."""
+    t = text.strip()
+    return t in ("", "-", "null") or t.startswith("null")
+
+
 def _extract_scoreboard(
     soup: BeautifulSoup,
     team_left_id: int,
@@ -405,6 +422,49 @@ def _extract_scoreboard(
             rs_text = rs_td.get_text(strip=True) if rs_td else "0%"
             round_swing = _parse_percentage(rs_text)
 
+            # --- Eco-adjusted stats ---
+            eco_kills_td = row.select_one("td.st-kills.eco-adjusted-data")
+            eco_deaths_td = row.select_one("td.st-deaths.eco-adjusted-data")
+            eco_adr_td = row.select_one("td.st-adr.eco-adjusted-data")
+            eco_kast_td = row.select_one("td.st-kast.gtSmartphone-only.eco-adjusted-data")
+            eco_opkd_td = row.select_one("td.st-opkd.eco-adjusted-data")
+
+            e_kills: int | None = None
+            e_deaths: int | None = None
+            e_hs_kills: int | None = None
+            e_traded_deaths: int | None = None
+            e_adr: float | None = None
+            e_kast: float | None = None
+            e_opening_kills: int | None = None
+            e_opening_deaths: int | None = None
+
+            eco_kills_text = eco_kills_td.get_text(strip=True) if eco_kills_td else ""
+            if eco_kills_text and not _is_eco_null(eco_kills_text):
+                e_kills, e_hs_kills = _parse_compound_stat(eco_kills_text)
+
+            eco_deaths_text = eco_deaths_td.get_text(strip=True) if eco_deaths_td else ""
+            if eco_deaths_text and not _is_eco_null(eco_deaths_text):
+                e_deaths, e_traded_deaths = _parse_compound_stat(eco_deaths_text)
+
+            eco_adr_text = eco_adr_td.get_text(strip=True) if eco_adr_td else ""
+            if eco_adr_text and not _is_eco_null(eco_adr_text):
+                try:
+                    e_adr = float(eco_adr_text)
+                except (ValueError, TypeError):
+                    pass
+
+            eco_kast_text = eco_kast_td.get_text(strip=True) if eco_kast_td else ""
+            if eco_kast_text and not _is_eco_null(eco_kast_text):
+                e_kast = _parse_percentage(eco_kast_text)
+
+            eco_opkd_text = eco_opkd_td.get_text(strip=True) if eco_opkd_td else ""
+            if eco_opkd_text and not _is_eco_null(eco_opkd_text):
+                e_opening_kills, e_opening_deaths = _parse_opkd(eco_opkd_text)
+
+            # Derived fields
+            e_kd_diff = (e_kills - e_deaths) if (e_kills is not None and e_deaths is not None) else None
+            e_fk_diff = (e_opening_kills - e_opening_deaths) if (e_opening_kills is not None and e_opening_deaths is not None) else None
+
             players.append(
                 PlayerStats(
                     player_id=player_id,
@@ -426,6 +486,16 @@ def _extract_scoreboard(
                     clutch_wins=clutch_wins,
                     traded_deaths=traded_deaths,
                     round_swing=round_swing,
+                    e_kills=e_kills,
+                    e_deaths=e_deaths,
+                    e_hs_kills=e_hs_kills,
+                    e_kd_diff=e_kd_diff,
+                    e_adr=e_adr,
+                    e_kast=e_kast,
+                    e_opening_kills=e_opening_kills,
+                    e_opening_deaths=e_opening_deaths,
+                    e_fk_diff=e_fk_diff,
+                    e_traded_deaths=e_traded_deaths,
                 )
             )
 

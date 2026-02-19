@@ -320,3 +320,96 @@ class TestAllSamplesParseWithoutCrash:
         assert isinstance(result.team_right_name, str)
         assert len(result.team_left_name) > 0
         assert len(result.team_right_name) > 0
+
+
+# ---------------------------------------------------------------------------
+# TestEcoAdjustedModern -- modern sample (219128) has real eco values
+# ---------------------------------------------------------------------------
+class TestEcoAdjustedModern:
+    """Test eco-adjusted stat extraction on a modern (Rating 3.0) sample."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        html = load_sample("mapstats-219128-stats.html.gz")
+        self.result = parse_map_stats(html, 219128)
+
+    def test_eco_kills_present(self):
+        for p in self.result.players:
+            assert p.e_kills is not None
+            assert p.e_kills >= 0
+
+    def test_eco_deaths_present(self):
+        for p in self.result.players:
+            assert p.e_deaths is not None
+            assert p.e_deaths >= 0
+
+    def test_eco_hs_kills_le_eco_kills(self):
+        for p in self.result.players:
+            assert p.e_hs_kills is not None
+            assert p.e_hs_kills <= p.e_kills
+
+    def test_eco_adr_present(self):
+        for p in self.result.players:
+            assert p.e_adr is not None
+            assert p.e_adr >= 0
+
+    def test_eco_kast_present(self):
+        for p in self.result.players:
+            assert p.e_kast is not None
+            assert p.e_kast >= 0
+
+    def test_eco_opkd_present(self):
+        for p in self.result.players:
+            assert p.e_opening_kills is not None
+            assert p.e_opening_deaths is not None
+
+    def test_eco_kd_diff_computed(self):
+        for p in self.result.players:
+            assert p.e_kd_diff == p.e_kills - p.e_deaths
+
+    def test_eco_fk_diff_computed(self):
+        for p in self.result.players:
+            assert p.e_fk_diff == p.e_opening_kills - p.e_opening_deaths
+
+    def test_eco_traded_deaths_present(self):
+        for p in self.result.players:
+            assert p.e_traded_deaths is not None
+            assert p.e_traded_deaths >= 0
+
+
+# ---------------------------------------------------------------------------
+# TestEcoAdjustedRating2 -- Rating 2.0 sample (162345) has null eco values
+# ---------------------------------------------------------------------------
+class TestEcoAdjustedRating2:
+    """Test eco-adjusted stats are None on Rating 2.0 matches."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        html = load_sample("mapstats-162345-stats.html.gz")
+        self.result = parse_map_stats(html, 162345)
+
+    def test_eco_kills_none(self):
+        for p in self.result.players:
+            assert p.e_kills is None
+
+    def test_eco_deaths_none(self):
+        for p in self.result.players:
+            assert p.e_deaths is None
+
+    def test_eco_adr_none(self):
+        for p in self.result.players:
+            assert p.e_adr is None
+
+    def test_eco_kast_none(self):
+        for p in self.result.players:
+            assert p.e_kast is None
+
+    def test_eco_opkd_none(self):
+        for p in self.result.players:
+            assert p.e_opening_kills is None
+            assert p.e_opening_deaths is None
+
+    def test_eco_derived_none(self):
+        for p in self.result.players:
+            assert p.e_kd_diff is None
+            assert p.e_fk_diff is None

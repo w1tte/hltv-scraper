@@ -95,7 +95,7 @@ def mock_client():
     client = MagicMock()
     client.fetch = AsyncMock()
 
-    async def _fetch_many(urls):
+    async def _fetch_many(urls, **kwargs):
         results = []
         for url in urls:
             try:
@@ -349,7 +349,7 @@ class TestRunMatchOverview:
             side_effect=patched_parse,
         ):
             stats = await run_match_overview(
-                mock_client, match_repo, discovery_repo, storage, config
+                [mock_client], match_repo, discovery_repo, storage, config
             )
 
         # Match should fail validation

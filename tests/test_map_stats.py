@@ -74,7 +74,7 @@ def mock_client():
     client = MagicMock()
     client.fetch = AsyncMock()
 
-    async def _fetch_many(urls):
+    async def _fetch_many(urls, **kwargs):
         results = []
         for url in urls:
             try:

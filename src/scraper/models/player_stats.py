@@ -36,6 +36,17 @@ class PlayerStatsModel(BaseModel):
     traded_deaths: int | None = Field(default=None, ge=0)
     round_swing: float | None = None  # Signed percentage, can be negative
     mk_rating: float | None = Field(default=None, ge=0.0)
+    # Eco-adjusted stats (None for Rating 2.0 matches)
+    e_kills: int | None = Field(default=None, ge=0)
+    e_deaths: int | None = Field(default=None, ge=0)
+    e_hs_kills: int | None = Field(default=None, ge=0)
+    e_kd_diff: int | None = None  # Can be negative
+    e_adr: float | None = Field(default=None, ge=0.0)
+    e_kast: float | None = Field(default=None, ge=0.0)  # Can exceed 100% due to eco weighting
+    e_opening_kills: int | None = Field(default=None, ge=0)
+    e_opening_deaths: int | None = Field(default=None, ge=0)
+    e_fk_diff: int | None = None  # Can be negative
+    e_traded_deaths: int | None = Field(default=None, ge=0)
     # Provenance
     scraped_at: str = Field(min_length=1)
     updated_at: str = ""
@@ -72,6 +83,39 @@ class PlayerStatsModel(BaseModel):
                     f"fk_diff ({self.fk_diff}) != opening_kills "
                     f"({self.opening_kills}) - opening_deaths "
                     f"({self.opening_deaths}) = {expected}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def check_e_kd_diff_consistency(self) -> Self:
+        """e_kd_diff should equal e_kills - e_deaths when all three are present."""
+        if (
+            self.e_kills is not None
+            and self.e_deaths is not None
+            and self.e_kd_diff is not None
+        ):
+            expected = self.e_kills - self.e_deaths
+            if self.e_kd_diff != expected:
+                raise ValueError(
+                    f"e_kd_diff ({self.e_kd_diff}) != e_kills ({self.e_kills}) - "
+                    f"e_deaths ({self.e_deaths}) = {expected}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def check_e_fk_diff_consistency(self) -> Self:
+        """e_fk_diff should equal e_opening_kills - e_opening_deaths when all present."""
+        if (
+            self.e_opening_kills is not None
+            and self.e_opening_deaths is not None
+            and self.e_fk_diff is not None
+        ):
+            expected = self.e_opening_kills - self.e_opening_deaths
+            if self.e_fk_diff != expected:
+                raise ValueError(
+                    f"e_fk_diff ({self.e_fk_diff}) != e_opening_kills "
+                    f"({self.e_opening_kills}) - e_opening_deaths "
+                    f"({self.e_opening_deaths}) = {expected}"
                 )
         return self
 

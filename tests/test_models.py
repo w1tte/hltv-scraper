@@ -188,6 +188,14 @@ class TestMatchModel:
         assert len(caught) >= 1
         assert "1 wins in BO3" in str(caught[0].message)
 
+    def test_bo1_round_score_accepted(self, valid_match):
+        # BO1 shows round score (e.g. 13-4), not series score
+        valid_match["best_of"] = 1
+        valid_match["team1_score"] = 13
+        valid_match["team2_score"] = 4
+        model = MatchModel.model_validate(valid_match)
+        assert model.team1_score == 13
+
     def test_forfeit_match_model_no_score_check(self, valid_match):
         # ForfeitMatchModel allows irregular scores
         valid_match["team1_score"] = 1
