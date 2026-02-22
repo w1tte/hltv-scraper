@@ -141,19 +141,19 @@ class HLTVClient:
             title = await first_tab.evaluate("document.title")
             if not isinstance(title, str):
                 title = ""
-            # Detect Chrome network error pages (e.g. ERR_NO_SUPPORTED_PROXIES)
-            chrome_error = await first_tab.evaluate(
-                "typeof window.chrome !== 'undefined' && "
-                "document.documentElement.outerHTML.includes('errorCode')"
+            # Detect Chrome network error pages (ERR_NO_SUPPORTED_PROXIES, etc.)
+            html_snippet = await first_tab.evaluate(
+                "document.documentElement.outerHTML.slice(0, 4000)"
             )
-            if chrome_error:
-                error_code = await first_tab.evaluate(
-                    "document.querySelector('[jsname]') ? "
-                    "document.documentElement.outerHTML.match(/ERR_[A-Z_]+/) || ['unknown'] : ['unknown']"
-                )
+            if not isinstance(html_snippet, str):
+                html_snippet = ""
+            if 'id="main-frame-error"' in html_snippet or "ERR_NO_SUPPORTED_PROXIES" in html_snippet:
+                import re as _re
+                codes = _re.findall(r"ERR_[A-Z_]+", html_snippet)
+                code = codes[0] if codes else "ERR_UNKNOWN"
                 raise HLTVFetchError(
-                    f"Chrome network error during warmup (proxy may not support auth): "
-                    f"{error_code[0] if isinstance(error_code, list) else error_code}",
+                    f"Chrome network error during warmup ({code}). "
+                    "Check proxy format/credentials.",
                     url=warmup_url,
                 )
             if not any(sig in title for sig in _CHALLENGE_TITLES):
@@ -342,7 +342,7 @@ class HLTVClient:
         )
 
     @retry(
-        retry=retry_if_exception_type(CloudflareChallenge),
+        retry=retry_if_exception_type((CloudflareChallenge, HLTVFetchError)),
         wait=wait_exponential_jitter(initial=10, max=120, jitter=5),
         stop=stop_after_attempt(5),  # overridden in _patch_retry
         before_sleep=before_sleep_log(logger, logging.WARNING),

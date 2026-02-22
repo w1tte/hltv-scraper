@@ -1,0 +1,12 @@
+# Use this file after whitelisting 89.167.92.213 on Webshare
+# Chrome can use SOCKS5 without credentials natively
+socks5://31.59.20.176:6754
+socks5://23.95.150.145:6114
+socks5://198.23.239.134:6540
+socks5://45.38.107.97:6014
+socks5://107.172.163.27:6543
+socks5://198.105.121.200:6462
+socks5://64.137.96.74:6641
+socks5://216.10.27.159:6837
+socks5://142.111.67.146:5611
+socks5://23.26.53.37:6003
