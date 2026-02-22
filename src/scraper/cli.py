@@ -26,6 +26,7 @@ from scraper.discovery_repository import DiscoveryRepository
 from scraper.http_client import HLTVClient
 from scraper.logging_config import setup_logging
 from scraper.pipeline import ShutdownHandler, run_pipeline
+from scraper.pipeline_v2 import run_pipeline_v2
 from scraper.repository import MatchRepository
 from scraper.storage import HtmlStorage
 
@@ -64,6 +65,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--clean",
         action="store_true",
         help="Wipe data directory before starting (fresh run)",
+    )
+    parser.add_argument(
+        "--pipeline",
+        choices=["v1", "v2"],
+        default="v2",
+        help=(
+            "Pipeline architecture to use. "
+            "v2 (default): discover all first, then worker pool per match (each browser owns one match end-to-end). "
+            "v1: classic 3-stage streaming pipeline."
+        ),
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Number of parallel browser workers for pipeline v2 (default: 4)",
     )
     parser.add_argument(
         "--data-dir",
@@ -176,14 +193,23 @@ async def async_main(args: argparse.Namespace) -> None:
     config = ScraperConfig(**config_overrides)
 
     mode = "full" if args.full else "incremental"
-    total_workers = args.overview_workers + args.map_workers + args.perf_workers
-    logger.info(
-        "Starting hltv-scraper: offsets %d-%d, mode=%s, data_dir=%s, "
-        "workers=%d+%d+%d, tabs=%d, page_wait=%.1fs, min_delay=%.1fs, log=%s",
-        args.start_offset, args.end_offset, mode, args.data_dir,
-        args.overview_workers, args.map_workers, args.perf_workers,
-        config.concurrent_tabs, config.page_load_wait, config.min_delay, log_file,
-    )
+    use_v2 = args.pipeline == "v2"
+    total_workers = args.workers if use_v2 else (args.overview_workers + args.map_workers + args.perf_workers)
+    if use_v2:
+        logger.info(
+            "Starting hltv-scraper v2: offsets %d-%d, mode=%s, data_dir=%s, "
+            "workers=%d, tabs=%d, page_wait=%.1fs, min_delay=%.1fs, log=%s",
+            args.start_offset, args.end_offset, mode, args.data_dir,
+            args.workers, config.concurrent_tabs, config.page_load_wait, config.min_delay, log_file,
+        )
+    else:
+        logger.info(
+            "Starting hltv-scraper: offsets %d-%d, mode=%s, data_dir=%s, "
+            "workers=%d+%d+%d, tabs=%d, page_wait=%.1fs, min_delay=%.1fs, log=%s",
+            args.start_offset, args.end_offset, mode, args.data_dir,
+            args.overview_workers, args.map_workers, args.perf_workers,
+            config.concurrent_tabs, config.page_load_wait, config.min_delay, log_file,
+        )
 
     # 3. Clean data dir if requested
     if args.clean:
@@ -237,40 +263,56 @@ async def async_main(args: argparse.Namespace) -> None:
                     await asyncio.sleep(2.0)
             return pool
 
-        overview_pool = await create_pool(
-            args.overview_workers, "overview", 0,
-        )
-        await asyncio.sleep(2.0)
-        map_pool = await create_pool(
-            args.map_workers, "map stats", args.overview_workers,
-        )
-        await asyncio.sleep(2.0)
-        perf_pool = await create_pool(
-            args.perf_workers, "perf/economy",
-            args.overview_workers + args.map_workers,
-        )
+        if use_v2:
+            # v2: flat pool — each browser owns one match end-to-end
+            worker_pool = await create_pool(args.workers, "worker", 0)
 
-        # Scale batch sizes so each browser gets a full batch
-        config.overview_batch_size *= args.overview_workers
-        config.map_stats_batch_size *= args.map_workers
-        config.perf_economy_batch_size *= args.perf_workers
+            results = await run_pipeline_v2(
+                clients=worker_pool,
+                match_repo=match_repo,
+                discovery_repo=discovery_repo,
+                storage=storage,
+                config=config,
+                shutdown=shutdown,
+                incremental=not args.full,
+                force_rescrape=args.force_rescrape,
+            )
+        else:
+            # v1: three separate pools per stage
+            overview_pool = await create_pool(
+                args.overview_workers, "overview", 0,
+            )
+            await asyncio.sleep(2.0)
+            map_pool = await create_pool(
+                args.map_workers, "map stats", args.overview_workers,
+            )
+            await asyncio.sleep(2.0)
+            perf_pool = await create_pool(
+                args.perf_workers, "perf/economy",
+                args.overview_workers + args.map_workers,
+            )
 
-        clients = {
-            "overview": overview_pool,
-            "map_stats": map_pool,
-            "perf_economy": perf_pool,
-        }
+            # Scale batch sizes so each browser gets a full batch
+            config.overview_batch_size *= args.overview_workers
+            config.map_stats_batch_size *= args.map_workers
+            config.perf_economy_batch_size *= args.perf_workers
 
-        results = await run_pipeline(
-            clients=clients,
-            match_repo=match_repo,
-            discovery_repo=discovery_repo,
-            storage=storage,
-            config=config,
-            shutdown=shutdown,
-            incremental=not args.full,
-            force_rescrape=args.force_rescrape,
-        )
+            clients = {
+                "overview": overview_pool,
+                "map_stats": map_pool,
+                "perf_economy": perf_pool,
+            }
+
+            results = await run_pipeline(
+                clients=clients,
+                match_repo=match_repo,
+                discovery_repo=discovery_repo,
+                storage=storage,
+                config=config,
+                shutdown=shutdown,
+                incremental=not args.full,
+                force_rescrape=args.force_rescrape,
+            )
     finally:
         for c in clients_to_close:
             await c.close()
