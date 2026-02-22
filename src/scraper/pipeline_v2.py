@@ -28,10 +28,12 @@ from scraper.discovery import run_discovery
 from scraper.economy_parser import parse_economy
 from scraper.map_stats_parser import parse_map_stats
 from scraper.match_parser import parse_match_overview
-from scraper.models import ForfeitMatchModel, MatchModel
+from scraper.models.match import ForfeitMatchModel, MatchModel
+from scraper.models.map import MapModel
+from scraper.models.veto import VetoModel
 from scraper.performance_parser import parse_performance
 from scraper.pipeline import ShutdownHandler
-from scraper.validation import validate_and_quarantine
+from scraper.validation import validate_and_quarantine, validate_batch
 
 logger = logging.getLogger(__name__)
 
@@ -130,32 +132,24 @@ async def _scrape_match(
             for v in parsed.vetoes
         ]
 
-    players_data = []
-    if parsed.players:
-        players_data = [
-            {
-                "match_id": match_id, "player_id": p.player_id,
-                "player_name": p.player_name, "team_name": p.team_name,
-                "scraped_at": ts, "source_url": source_url,
-                "parser_version": _OVERVIEW_PARSER,
-            }
-            for p in parsed.players
-        ]
-
+    ctx = {"match_id": match_id}
     model_cls = ForfeitMatchModel if parsed.is_forfeit else MatchModel
-    is_valid, _ = validate_and_quarantine(
-        match_data, maps_data, vetoes_data, players_data,
-        match_repo, model_cls, match_id,
-    )
-    if not is_valid:
-        logger.warning("Match %d failed validation — quarantined", match_id)
+    validated_match = validate_and_quarantine(match_data, model_cls, ctx, match_repo)
+    if validated_match is None:
+        logger.error("Match %d failed validation — quarantined", match_id)
         discovery_repo.update_status(match_id, "failed")
         result["error"] = "validation failed"
         return result
 
+    validated_maps, maps_q = validate_batch(maps_data, MapModel, ctx, match_repo)
+    validated_vetoes, vetoes_q = validate_batch(vetoes_data, VetoModel, ctx, match_repo)
+    if maps_q or vetoes_q:
+        logger.warning("Match %d: quarantined %d maps, %d vetoes", match_id, maps_q, vetoes_q)
+
     match_repo.upsert_match_overview(
-        match_data=match_data, maps_data=maps_data,
-        vetoes_data=vetoes_data, players_data=players_data,
+        match_data=match_data,
+        maps_data=validated_maps,
+        vetoes_data=validated_vetoes,
     )
     discovery_repo.update_status(match_id, "scraped")
     logger.info("Parsed and persisted match %d (%s)", match_id, source_url)

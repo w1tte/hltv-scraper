@@ -174,10 +174,17 @@ def _format_results(results: dict, wall_time: float, log_file: str) -> str:
 
 async def async_main(args: argparse.Namespace) -> None:
     """Async entry point: set up components, run pipeline, print summary."""
-    # 1. Logging
+    # 1. Clean data dir FIRST (before logging setup so log dir exists)
+    if args.clean:
+        data_path = Path(args.data_dir)
+        if data_path.exists():
+            shutil.rmtree(data_path)
+        data_path.mkdir(parents=True, exist_ok=True)
+
+    # 2. Logging (must come after clean so log dir is fresh)
     log_file = setup_logging(data_dir=args.data_dir)
 
-    # 2. Config
+    # 3. Config
     config_overrides = {
         "data_dir": args.data_dir,
         "db_path": f"{args.data_dir}/hltv.db",
@@ -211,13 +218,8 @@ async def async_main(args: argparse.Namespace) -> None:
             config.concurrent_tabs, config.page_load_wait, config.min_delay, log_file,
         )
 
-    # 3. Clean data dir if requested
     if args.clean:
-        data_path = Path(args.data_dir)
-        if data_path.exists():
-            shutil.rmtree(data_path)
-            logger.info("Cleaned data directory: %s", data_path)
-        data_path.mkdir(parents=True, exist_ok=True)
+        logger.info("Cleaned data directory: %s", args.data_dir)
 
     # 4. Shutdown handler
     shutdown = ShutdownHandler()
