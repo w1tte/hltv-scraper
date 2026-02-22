@@ -124,6 +124,7 @@ class HLTVClient:
         self._browser = await nodriver.start(
             headless=False,
             browser_args=browser_args,
+            no_sandbox=True,
         )
 
         # Warm-up: visit a results page with gameType to match real fetch URLs

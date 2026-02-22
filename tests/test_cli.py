@@ -14,7 +14,7 @@ class TestBuildParser:
         """Empty argv produces correct defaults."""
         args = build_parser().parse_args([])
         assert args.start_offset == 0
-        assert args.end_offset == 9900
+        assert args.end_offset == 25000
         assert args.full is False
         assert args.force_rescrape is False
         assert args.data_dir == "data"
