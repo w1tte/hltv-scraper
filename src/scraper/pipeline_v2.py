@@ -156,33 +156,46 @@ async def _scrape_match(
     logger.info("Parsed and persisted match %d (%s)", match_id, source_url)
 
     # ------------------------------------------------------------------ #
-    # Stages B + C: Map stats then perf/economy for each playable map
+    # Stages B + C: parallel per-map fetching
+    #
+    # Stage B: all map-stats pages fetched simultaneously (one tab per map).
+    # Stage C: for each map, perf + econ fetched simultaneously, and all
+    #          maps also run in parallel — so a BO3 fires 6 fetches at once.
     # ------------------------------------------------------------------ #
     if parsed.is_forfeit:
         result["ok"] = True
         return result
 
     playable = [m for m in parsed.maps if m.mapstatsid]
-    for m in playable:
+    if not playable:
+        result["ok"] = True
+        return result
+
+    # Pre-fetch team resolution data once (used in every perf/econ stage)
+    match_row = match_repo.get_match(match_id) or {}
+    team_name_to_id = {
+        match_row.get("team1_name"): match_row.get("team1_id"),
+        match_row.get("team2_name"): match_row.get("team2_id"),
+    }
+
+    # ---- Stage B helper ------------------------------------------------
+    async def fetch_map_stats_one(m) -> bool:
         mapstatsid = m.mapstatsid
         map_number = m.map_number
         map_url    = base + _MAP_STATS_URL.format(mapstatsid=mapstatsid)
-
-        # --- B: Map stats ---
         try:
             map_html = await client.fetch(map_url)
         except Exception as exc:
             logger.error("Map %d fetch: %s", mapstatsid, exc)
-            continue
+            return False
 
         storage.save(map_html, match_id=match_id,
                      mapstatsid=mapstatsid, page_type="map_stats")
-
         try:
             map_parsed = parse_map_stats(map_html, mapstatsid)
         except Exception as exc:
             logger.error("Map %d parse: %s", mapstatsid, exc)
-            continue
+            return False
 
         ts = now()
         stats_data = [
@@ -194,22 +207,21 @@ async def _scrape_match(
                 "flash_assists": ps.flash_assists, "hs_kills": ps.hs_kills,
                 "kd_diff": ps.kd_diff, "adr": ps.adr, "kast": ps.kast,
                 "fk_diff": ps.fk_diff, "rating": ps.rating,
-                "kpr": None, "dpr": None,          # filled in stage C
+                "kpr": None, "dpr": None, "mk_rating": None,
                 "opening_kills": ps.opening_kills, "opening_deaths": ps.opening_deaths,
                 "multi_kills": ps.multi_kills, "clutch_wins": ps.clutch_wins,
                 "traded_deaths": ps.traded_deaths, "round_swing": ps.round_swing,
-                "mk_rating": None,                 # filled in stage C
                 "e_kills": ps.e_kills, "e_deaths": ps.e_deaths,
                 "e_hs_kills": ps.e_hs_kills, "e_kd_diff": ps.e_kd_diff,
                 "e_adr": ps.e_adr, "e_kast": ps.e_kast,
-                "e_opening_kills": ps.e_opening_kills, "e_opening_deaths": ps.e_opening_deaths,
+                "e_opening_kills": ps.e_opening_kills,
+                "e_opening_deaths": ps.e_opening_deaths,
                 "e_fk_diff": ps.e_fk_diff, "e_traded_deaths": ps.e_traded_deaths,
                 "scraped_at": ts, "source_url": map_url,
                 "parser_version": _MAP_STATS_PARSER,
             }
             for ps in map_parsed.players
         ]
-
         rounds_data = [
             {
                 "match_id": match_id, "map_number": map_number,
@@ -220,29 +232,27 @@ async def _scrape_match(
             }
             for ro in map_parsed.rounds
         ]
+        match_repo.upsert_map_stats_complete(stats_data=stats_data, rounds_data=rounds_data)
+        logger.info("Parsed and persisted mapstatsid %d (match %d, map %d)",
+                    mapstatsid, match_id, map_number)
+        return True
 
-        match_repo.upsert_map_stats_complete(
-            stats_data=stats_data, rounds_data=rounds_data,
-        )
-        logger.info(
-            "Parsed and persisted mapstatsid %d (match %d, map %d)",
-            mapstatsid, match_id, map_number,
-        )
+    # ---- Stage C helper ------------------------------------------------
+    async def fetch_perf_econ_one(m) -> bool:
+        mapstatsid = m.mapstatsid
+        map_number = m.map_number
+        perf_url   = base + _PERF_URL.format(mapstatsid=mapstatsid)
+        econ_url   = base + _ECON_URL.format(mapstatsid=mapstatsid)
 
-        # --- C: Perf + economy ---
-        perf_url = base + _PERF_URL.format(mapstatsid=mapstatsid)
-        econ_url = base + _ECON_URL.format(mapstatsid=mapstatsid)
-
+        # Fetch perf and econ simultaneously (two tabs used at once)
         try:
-            perf_html = await client.fetch(
-                perf_url, content_marker="data-fusionchart-config"
-            )
-            econ_html = await client.fetch(
-                econ_url, content_marker="data-fusionchart-config"
+            perf_html, econ_html = await asyncio.gather(
+                client.fetch(perf_url, content_marker="data-fusionchart-config"),
+                client.fetch(econ_url, content_marker="data-fusionchart-config"),
             )
         except Exception as exc:
             logger.error("Map %d perf/econ fetch: %s", mapstatsid, exc)
-            continue
+            return False
 
         storage.save(perf_html, match_id=match_id,
                      mapstatsid=mapstatsid, page_type="map_performance")
@@ -251,81 +261,66 @@ async def _scrape_match(
 
         try:
             perf_parsed = parse_performance(perf_html, mapstatsid)
-            econ_parsed  = parse_economy(econ_html, mapstatsid)
+            econ_parsed = parse_economy(econ_html, mapstatsid)
         except Exception as exc:
             logger.error("Map %d perf/econ parse: %s", mapstatsid, exc)
-            continue
+            return False
 
-        ts = now()
-        # Merge Phase 7 fields onto the existing player_stats rows
-        existing  = {s["player_id"]: s for s in match_repo.get_player_stats(match_id, map_number)}
+        ts       = now()
+        existing = {s["player_id"]: s for s in
+                    match_repo.get_player_stats(match_id, map_number)}
+
         perf_stats = [
             {
                 "match_id": match_id, "map_number": map_number,
                 "player_id": p.player_id,
                 "player_name": existing.get(p.player_id, {}).get("player_name", p.player_name),
-                "team_id": existing.get(p.player_id, {}).get("team_id"),
-                "kills":           existing.get(p.player_id, {}).get("kills"),
-                "deaths":          existing.get(p.player_id, {}).get("deaths"),
-                "assists":         existing.get(p.player_id, {}).get("assists"),
-                "flash_assists":   existing.get(p.player_id, {}).get("flash_assists"),
-                "hs_kills":        existing.get(p.player_id, {}).get("hs_kills"),
-                "kd_diff":         existing.get(p.player_id, {}).get("kd_diff"),
-                "adr":             existing.get(p.player_id, {}).get("adr"),
-                "kast":            existing.get(p.player_id, {}).get("kast"),
-                "fk_diff":         existing.get(p.player_id, {}).get("fk_diff"),
-                "rating":          existing.get(p.player_id, {}).get("rating"),
-                "kpr": p.kpr, "dpr": p.dpr, "mk_rating": p.mk_rating,  # Phase 7
-                "opening_kills":   existing.get(p.player_id, {}).get("opening_kills"),
-                "opening_deaths":  existing.get(p.player_id, {}).get("opening_deaths"),
-                "multi_kills":     existing.get(p.player_id, {}).get("multi_kills"),
-                "clutch_wins":     existing.get(p.player_id, {}).get("clutch_wins"),
-                "traded_deaths":   existing.get(p.player_id, {}).get("traded_deaths"),
-                "round_swing":     existing.get(p.player_id, {}).get("round_swing"),
-                "e_kills":         existing.get(p.player_id, {}).get("e_kills"),
-                "e_deaths":        existing.get(p.player_id, {}).get("e_deaths"),
-                "e_hs_kills":      existing.get(p.player_id, {}).get("e_hs_kills"),
-                "e_kd_diff":       existing.get(p.player_id, {}).get("e_kd_diff"),
-                "e_adr":           existing.get(p.player_id, {}).get("e_adr"),
-                "e_kast":          existing.get(p.player_id, {}).get("e_kast"),
-                "e_opening_kills": existing.get(p.player_id, {}).get("e_opening_kills"),
-                "e_opening_deaths":existing.get(p.player_id, {}).get("e_opening_deaths"),
-                "e_fk_diff":       existing.get(p.player_id, {}).get("e_fk_diff"),
-                "e_traded_deaths": existing.get(p.player_id, {}).get("e_traded_deaths"),
+                "team_id":          existing.get(p.player_id, {}).get("team_id"),
+                "kills":            existing.get(p.player_id, {}).get("kills"),
+                "deaths":           existing.get(p.player_id, {}).get("deaths"),
+                "assists":          existing.get(p.player_id, {}).get("assists"),
+                "flash_assists":    existing.get(p.player_id, {}).get("flash_assists"),
+                "hs_kills":         existing.get(p.player_id, {}).get("hs_kills"),
+                "kd_diff":          existing.get(p.player_id, {}).get("kd_diff"),
+                "adr":              existing.get(p.player_id, {}).get("adr"),
+                "kast":             existing.get(p.player_id, {}).get("kast"),
+                "fk_diff":          existing.get(p.player_id, {}).get("fk_diff"),
+                "rating":           existing.get(p.player_id, {}).get("rating"),
+                "kpr": p.kpr, "dpr": p.dpr, "mk_rating": p.mk_rating,
+                "opening_kills":    existing.get(p.player_id, {}).get("opening_kills"),
+                "opening_deaths":   existing.get(p.player_id, {}).get("opening_deaths"),
+                "multi_kills":      existing.get(p.player_id, {}).get("multi_kills"),
+                "clutch_wins":      existing.get(p.player_id, {}).get("clutch_wins"),
+                "traded_deaths":    existing.get(p.player_id, {}).get("traded_deaths"),
+                "round_swing":      existing.get(p.player_id, {}).get("round_swing"),
+                "e_kills":          existing.get(p.player_id, {}).get("e_kills"),
+                "e_deaths":         existing.get(p.player_id, {}).get("e_deaths"),
+                "e_hs_kills":       existing.get(p.player_id, {}).get("e_hs_kills"),
+                "e_kd_diff":        existing.get(p.player_id, {}).get("e_kd_diff"),
+                "e_adr":            existing.get(p.player_id, {}).get("e_adr"),
+                "e_kast":           existing.get(p.player_id, {}).get("e_kast"),
+                "e_opening_kills":  existing.get(p.player_id, {}).get("e_opening_kills"),
+                "e_opening_deaths": existing.get(p.player_id, {}).get("e_opening_deaths"),
+                "e_fk_diff":        existing.get(p.player_id, {}).get("e_fk_diff"),
+                "e_traded_deaths":  existing.get(p.player_id, {}).get("e_traded_deaths"),
                 "scraped_at": ts, "source_url": perf_url,
                 "parser_version": _PERF_ECON_PARSER,
             }
             for p in perf_parsed.players
         ]
 
-        # Economy rows — resolve team IDs from match data
-        match_row      = match_repo.get_match(match_id) or {}
-        team_name_to_id = {
-            match_row.get("team1_name"): match_row.get("team1_id"),
-            match_row.get("team2_name"): match_row.get("team2_id"),
-        }
-        econ_t1_id = team_name_to_id.get(econ_parsed.team1_name)
-        econ_t2_id = team_name_to_id.get(econ_parsed.team2_name)
-        if econ_t1_id is None:
-            econ_t1_id = match_row.get("team1_id")
-        if econ_t2_id is None:
-            econ_t2_id = match_row.get("team2_id")
-
-        valid_rounds   = match_repo.get_valid_round_numbers(match_id, map_number)
-        # Economy: resolve team_name → team_id for each row
+        econ_t1_id = team_name_to_id.get(econ_parsed.team1_name) or match_row.get("team1_id")
+        econ_t2_id = team_name_to_id.get(econ_parsed.team2_name) or match_row.get("team2_id")
+        valid_rounds = match_repo.get_valid_round_numbers(match_id, map_number)
         economy_data = []
         for r in econ_parsed.rounds:
             if r.round_number not in valid_rounds:
                 continue
-            t_id = team_name_to_id.get(r.team_name)
-            if t_id is None:
-                t_id = econ_t1_id  # positional fallback
+            t_id = team_name_to_id.get(r.team_name) or econ_t1_id
             economy_data.append({
                 "match_id": match_id, "map_number": map_number,
-                "round_number": r.round_number,
-                "team_id": t_id,
-                "equipment_value": r.equipment_value,
-                "buy_type": r.buy_type,
+                "round_number": r.round_number, "team_id": t_id,
+                "equipment_value": r.equipment_value, "buy_type": r.buy_type,
                 "scraped_at": ts, "source_url": econ_url,
                 "parser_version": _PERF_ECON_PARSER,
             })
@@ -353,8 +348,18 @@ async def _scrape_match(
             mapstatsid, match_id, map_number,
             len(perf_stats), len(economy_data), len(kill_matrix_data), perf_url,
         )
-        result["maps_done"] += 1
+        return True
 
+    # ---- Run B: all map stats in parallel ------------------------------
+    b_results = await asyncio.gather(*[fetch_map_stats_one(m) for m in playable],
+                                     return_exceptions=True)
+
+    # ---- Run C: perf+econ for all maps in parallel ---------------------
+    c_results = await asyncio.gather(*[fetch_perf_econ_one(m) for m in playable],
+                                     return_exceptions=True)
+
+    maps_done = sum(1 for ok in c_results if ok is True)
+    result["maps_done"] = maps_done
     result["ok"] = True
     return result
 

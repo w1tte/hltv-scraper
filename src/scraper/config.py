@@ -37,7 +37,7 @@ class ScraperConfig:
     # Must be 1: nodriver's CDP routing mixes responses between concurrent
     # tabs in the same browser, causing ~48% of perf/econ fetches to get
     # wrong-page content. Use more workers instead for throughput.
-    concurrent_tabs: int = 1
+    concurrent_tabs: int = 3  # 3 tabs: one per map in a BO3, enables parallel map fetching
 
     # Seconds to poll for Cloudflare challenge to clear during fetches
     challenge_wait: float = 90.0
