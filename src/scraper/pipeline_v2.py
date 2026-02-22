@@ -352,15 +352,19 @@ async def _scrape_match(
         )
         return True
 
-    # ---- Run B: all map stats in parallel ------------------------------
-    b_results = await asyncio.gather(*[fetch_map_stats_one(m) for m in playable],
-                                     return_exceptions=True)
+    # ---- Run B then C sequentially per map ----------------------------
+    # Parallel across maps caused HLTV rate-limit (wrong page served).
+    # 4 workers in parallel already gives the speedup; stay sequential
+    # within each match to keep per-IP request rate sane.
+    for m in playable:
+        await fetch_map_stats_one(m)
 
-    # ---- Run C: perf+econ for all maps in parallel ---------------------
-    c_results = await asyncio.gather(*[fetch_perf_econ_one(m) for m in playable],
-                                     return_exceptions=True)
+    maps_done = 0
+    for m in playable:
+        ok = await fetch_perf_econ_one(m)
+        if ok:
+            maps_done += 1
 
-    maps_done = sum(1 for ok in c_results if ok is True)
     result["maps_done"] = maps_done
     result["ok"] = True
     return result
