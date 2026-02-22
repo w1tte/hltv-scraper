@@ -111,6 +111,7 @@ async def run_match_overview(
             match_data = {
                 "match_id": match_id,
                 "date": date_iso,
+                "date_unix_ms": result.date_unix_ms,
                 "event_id": result.event_id,
                 "event_name": result.event_name,
                 "team1_id": result.team1_id,

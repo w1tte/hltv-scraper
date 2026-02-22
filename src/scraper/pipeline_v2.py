@@ -98,6 +98,7 @@ async def _scrape_match(
 
     match_data = {
         "match_id": match_id, "date": date_iso,
+        "date_unix_ms": parsed.date_unix_ms,
         "event_id": parsed.event_id, "event_name": parsed.event_name,
         "team1_id": parsed.team1_id, "team1_name": parsed.team1_name,
         "team2_id": parsed.team2_id, "team2_name": parsed.team2_name,

@@ -17,18 +17,19 @@ import sqlite3
 
 UPSERT_MATCH = """
     INSERT INTO matches (
-        match_id, date, event_id, event_name,
+        match_id, date, date_unix_ms, event_id, event_name,
         team1_id, team1_name, team2_id, team2_name,
         team1_score, team2_score, best_of, is_lan,
         match_url, scraped_at, updated_at, source_url, parser_version
     ) VALUES (
-        :match_id, :date, :event_id, :event_name,
+        :match_id, :date, :date_unix_ms, :event_id, :event_name,
         :team1_id, :team1_name, :team2_id, :team2_name,
         :team1_score, :team2_score, :best_of, :is_lan,
         :match_url, :scraped_at, :scraped_at, :source_url, :parser_version
     )
     ON CONFLICT(match_id) DO UPDATE SET
         date           = excluded.date,
+        date_unix_ms   = excluded.date_unix_ms,
         event_id       = excluded.event_id,
         event_name     = excluded.event_name,
         team1_id       = excluded.team1_id,

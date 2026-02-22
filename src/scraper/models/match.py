@@ -15,6 +15,7 @@ class MatchModel(BaseModel):
 
     match_id: int = Field(gt=0)
     date: str
+    date_unix_ms: int | None = None  # epoch ms — exact start time
     event_id: int = Field(gt=0)
     event_name: str = Field(min_length=1)
     team1_id: int = Field(gt=0)
@@ -71,6 +72,7 @@ class ForfeitMatchModel(BaseModel):
 
     match_id: int = Field(gt=0)
     date: str
+    date_unix_ms: int | None = None  # epoch ms — exact start time
     event_id: int = Field(gt=0)
     event_name: str = Field(min_length=1)
     team1_id: int = Field(gt=0)

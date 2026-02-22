@@ -38,6 +38,7 @@ def make_match_data(match_id=1, **overrides):
     data = {
         "match_id": match_id,
         "date": "2025-06-15",
+        "date_unix_ms": 1750000000000,
         "event_id": 7148,
         "event_name": "BLAST Premier Spring Final 2025",
         "team1_id": 4608,
