@@ -244,11 +244,13 @@ async def _scrape_match(
         perf_url   = base + _PERF_URL.format(mapstatsid=mapstatsid)
         econ_url   = base + _ECON_URL.format(mapstatsid=mapstatsid)
 
-        # Fetch perf and econ simultaneously (two tabs used at once)
+        # Fetch perf then econ sequentially (same tab, avoids wrong-page errors)
         try:
-            perf_html, econ_html = await asyncio.gather(
-                client.fetch(perf_url, content_marker="data-fusionchart-config"),
-                client.fetch(econ_url, content_marker="data-fusionchart-config"),
+            perf_html = await client.fetch(
+                perf_url, content_marker="data-fusionchart-config"
+            )
+            econ_html = await client.fetch(
+                econ_url, content_marker="data-fusionchart-config"
             )
         except Exception as exc:
             logger.error("Map %d perf/econ fetch: %s", mapstatsid, exc)
