@@ -452,10 +452,16 @@ async def run_pipeline_v2(
                 results["overview"]["failed"] += 1
                 logger.warning("[%d/%d] Match %d failed: %s",
                                done + failed, total, entry["match_id"], r["error"])
+        except Exception as exc:
+            # Catch unexpected errors so one bad task doesn't kill the gather
+            failed += 1
+            results["overview"]["failed"] += 1
+            logger.error("Unexpected error on match %d: %s", entry["match_id"], exc)
         finally:
             client_queue.put_nowait(client)
 
-    await asyncio.gather(*[process_one(e) for e in pending])
+    # return_exceptions=True: one task's failure won't cancel the others
+    await asyncio.gather(*[process_one(e) for e in pending], return_exceptions=True)
 
     logger.info("Worker pool done: %d ok, %d failed, %.0fs elapsed",
                 done, failed, time.monotonic() - t0)
