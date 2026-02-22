@@ -184,6 +184,26 @@ class HLTVClient:
                 # Let CF cookies settle before real fetches begin
                 await asyncio.sleep(1.0)
                 break
+            # Click the Turnstile "Verify you are human" checkbox via CDP mouse
+            # events. The widget is inside a cross-origin iframe so JS can't
+            # reach it, but physical input events dispatched at the correct
+            # screen coordinates cross iframe boundaries natively.
+            # Coordinates (216, 337) are the checkbox position in a 1280x900 window.
+            try:
+                from nodriver.cdp.input_ import dispatch_mouse_event, MouseButton
+                await first_tab.send(dispatch_mouse_event(
+                    "mousePressed", x=216, y=337,
+                    button=MouseButton.LEFT, click_count=1,
+                ))
+                await asyncio.sleep(0.1)
+                await first_tab.send(dispatch_mouse_event(
+                    "mouseReleased", x=216, y=337,
+                    button=MouseButton.LEFT, click_count=1,
+                ))
+                logger.debug("Clicked Turnstile checkbox at (216,337), waiting for verification...")
+                await asyncio.sleep(3.0)
+            except Exception:
+                pass
             await asyncio.sleep(_POLL_INTERVAL)
             elapsed += _POLL_INTERVAL
         else:
@@ -244,10 +264,24 @@ class HLTVClient:
                 title = ""
 
             if any(sig in title for sig in _CHALLENGE_TITLES):
-                # Poll until challenge clears on this same tab (up to 30s)
-                logger.info("Challenge detected on %s — waiting for auto-solve...", url)
+                # Poll until challenge clears — click the Turnstile checkbox each cycle
+                logger.info("Challenge detected on %s — clicking Turnstile checkbox...", url)
                 elapsed = 0.0
                 while elapsed < self._config.challenge_wait:
+                    # Click Turnstile checkbox via CDP (crosses cross-origin iframe)
+                    try:
+                        from nodriver.cdp.input_ import dispatch_mouse_event, MouseButton
+                        await tab.send(dispatch_mouse_event(
+                            "mousePressed", x=216, y=337,
+                            button=MouseButton.LEFT, click_count=1,
+                        ))
+                        await asyncio.sleep(0.1)
+                        await tab.send(dispatch_mouse_event(
+                            "mouseReleased", x=216, y=337,
+                            button=MouseButton.LEFT, click_count=1,
+                        ))
+                    except Exception:
+                        pass
                     await asyncio.sleep(_POLL_INTERVAL)
                     elapsed += _POLL_INTERVAL
                     title = await tab.evaluate("document.title")
