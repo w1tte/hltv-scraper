@@ -356,7 +356,7 @@ def _extract_vetoes(soup: BeautifulSoup) -> list[VetoStep] | None:
     """
     veto_boxes = soup.select(".veto-box")
     if len(veto_boxes) < 2:
-        logger.warning("Fewer than 2 veto boxes found; cannot extract vetoes")
+        logger.warning("Fewer than 2 veto boxes found — likely a forfeit, skipping vetoes")
         return None
 
     veto_div = veto_boxes[1]
