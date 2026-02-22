@@ -413,9 +413,9 @@ async def run_pipeline_v2(
     # ------------------------------------------------------------------ #
     # Phase 2: Worker pool — each client processes one match end-to-end
     # ------------------------------------------------------------------ #
-    pending = discovery_repo.get_pending_matches(
-        limit=disc.get("matches_found", 50000)
-    )
+    # Always fetch all pending — do NOT limit by matches_found (which is 0 on
+    # incremental resume when discovery skips already-seen pages).
+    pending = discovery_repo.get_pending_matches(limit=50000)
     total = len(pending)
     logger.info("=== Phase 2: Processing %d matches with %d workers ===",
                 total, len(clients))
