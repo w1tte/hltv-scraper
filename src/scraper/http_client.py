@@ -147,13 +147,20 @@ class HLTVClient:
             )
             if not isinstance(html_snippet, str):
                 html_snippet = ""
-            if 'id="main-frame-error"' in html_snippet or "ERR_NO_SUPPORTED_PROXIES" in html_snippet:
+            if (
+                'id="main-frame-error"' in html_snippet
+                or "ERR_NO_SUPPORTED_PROXIES" in html_snippet
+                or "Access denied" in title
+                or "error code: 1005" in html_snippet
+                or "error code: 1006" in html_snippet
+                or "error code: 1007" in html_snippet
+            ):
                 import re as _re
                 codes = _re.findall(r"ERR_[A-Z_]+", html_snippet)
                 code = codes[0] if codes else "ERR_UNKNOWN"
                 raise HLTVFetchError(
-                    f"Chrome network error during warmup ({code}). "
-                    "Check proxy format/credentials.",
+                    f"Proxy IP blocked or network error during warmup ({code}). "
+                    "Datacenter proxy IPs are blocked by HLTV (CF-1005). Use residential proxies.",
                     url=warmup_url,
                 )
             if not any(sig in title for sig in _CHALLENGE_TITLES):
@@ -265,6 +272,16 @@ class HLTVClient:
                 )
                 if not isinstance(html, str):
                     html = ""
+
+            # Detect Cloudflare IP block (error 1005/1006/1007 — Access Denied)
+            # These pages pass the size check but are useless — treat as CF challenge
+            if html and "Access denied" in title and "cloudflare" in html.lower():
+                self._challenge_count += 1
+                self.rate_limiter.backoff()
+                raise CloudflareChallenge(
+                    f"Cloudflare IP block (Access Denied) on {url} — datacenter proxy blocked",
+                    url=url,
+                )
 
             # Fallback: detect Cloudflare challenge by HTML content
             # (catches localized titles not in _CHALLENGE_TITLES)
