@@ -62,7 +62,7 @@ _CHALLENGE_TITLES = (
 )
 
 # Warm-up: max seconds to wait for Cloudflare to clear on first visit
-_WARMUP_TIMEOUT = 30
+_WARMUP_TIMEOUT = 90
 _POLL_INTERVAL = 2
 
 
@@ -116,8 +116,21 @@ class HLTVClient:
         ``concurrent_tabs`` total) that share the browser's CF cookies.
         """
         browser_args = [
-            "--window-position=-32000,-32000",
-            "--window-size=800,600",
+            # Place window inside the virtual display — off-screen coords leak via JS
+            "--window-position=0,0",
+            "--window-size=1280,900",
+            # Anti-detection: remove navigator.webdriver and automation signals
+            "--disable-blink-features=AutomationControlled",
+            "--disable-features=IsolateOrigins",
+            # Realistic browser environment
+            "--lang=en-US,en",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-infobars",
+            # Enable software GL so canvas fingerprint isn't empty/wrong
+            "--use-gl=swiftshader",
+            "--enable-gpu-rasterization",
+            "--ignore-gpu-blocklist",
         ]
         if self._proxy_url:
             browser_args.append(f"--proxy-server={self._proxy_url}")

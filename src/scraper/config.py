@@ -40,7 +40,7 @@ class ScraperConfig:
     concurrent_tabs: int = 1
 
     # Seconds to poll for Cloudflare challenge to clear during fetches
-    challenge_wait: float = 30.0
+    challenge_wait: float = 90.0
 
     # HLTV base URL (single-site scraper)
     base_url: str = HLTV_BASE_URL
