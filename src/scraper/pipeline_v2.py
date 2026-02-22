@@ -175,7 +175,7 @@ async def _scrape_match(
             continue
 
         storage.save(map_html, match_id=match_id,
-                     mapstatsid=mapstatsid, page_type="mapstats")
+                     mapstatsid=mapstatsid, page_type="map_stats")
 
         try:
             map_parsed = parse_map_stats(map_html, mapstatsid)
@@ -244,9 +244,9 @@ async def _scrape_match(
             continue
 
         storage.save(perf_html, match_id=match_id,
-                     mapstatsid=mapstatsid, page_type="performance")
+                     mapstatsid=mapstatsid, page_type="map_performance")
         storage.save(econ_html, match_id=match_id,
-                     mapstatsid=mapstatsid, page_type="economy")
+                     mapstatsid=mapstatsid, page_type="map_economy")
 
         try:
             perf_parsed = parse_performance(perf_html, mapstatsid)
