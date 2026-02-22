@@ -16,7 +16,9 @@ Usage::
 import argparse
 import asyncio
 import logging
+import shutil
 import time
+from pathlib import Path
 
 from scraper.config import ScraperConfig
 from scraper.db import Database
@@ -57,6 +59,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--force-rescrape",
         action="store_true",
         help="Re-process already-complete matches (resets scraped -> pending)",
+    )
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Wipe data directory before starting (fresh run)",
     )
     parser.add_argument(
         "--data-dir",
@@ -178,15 +185,23 @@ async def async_main(args: argparse.Namespace) -> None:
         config.concurrent_tabs, config.page_load_wait, config.min_delay, log_file,
     )
 
-    # 3. Shutdown handler
+    # 3. Clean data dir if requested
+    if args.clean:
+        data_path = Path(args.data_dir)
+        if data_path.exists():
+            shutil.rmtree(data_path)
+            logger.info("Cleaned data directory: %s", data_path)
+        data_path.mkdir(parents=True, exist_ok=True)
+
+    # 4. Shutdown handler
     shutdown = ShutdownHandler()
     shutdown.install()
 
-    # 4. Database
+    # 5. Database
     db = Database(config.db_path)
     db.initialize()
 
-    # 5. Repositories and storage
+    # 6. Repositories and storage
     match_repo = MatchRepository(db.conn)
     discovery_repo = DiscoveryRepository(db.conn)
     storage = HtmlStorage(config.data_dir)

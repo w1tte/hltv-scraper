@@ -139,6 +139,23 @@ class HLTVClient:
         elapsed = 0.0
         while elapsed < _WARMUP_TIMEOUT:
             title = await first_tab.evaluate("document.title")
+            if not isinstance(title, str):
+                title = ""
+            # Detect Chrome network error pages (e.g. ERR_NO_SUPPORTED_PROXIES)
+            chrome_error = await first_tab.evaluate(
+                "typeof window.chrome !== 'undefined' && "
+                "document.documentElement.outerHTML.includes('errorCode')"
+            )
+            if chrome_error:
+                error_code = await first_tab.evaluate(
+                    "document.querySelector('[jsname]') ? "
+                    "document.documentElement.outerHTML.match(/ERR_[A-Z_]+/) || ['unknown'] : ['unknown']"
+                )
+                raise HLTVFetchError(
+                    f"Chrome network error during warmup (proxy may not support auth): "
+                    f"{error_code[0] if isinstance(error_code, list) else error_code}",
+                    url=warmup_url,
+                )
             if not any(sig in title for sig in _CHALLENGE_TITLES):
                 logger.info(
                     "Cloudflare cleared after %.1fs",
