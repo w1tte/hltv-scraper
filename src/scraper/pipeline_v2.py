@@ -276,11 +276,14 @@ async def _scrape_match(
             econ_parsed = parse_economy(econ_html, mapstatsid)
         except ValueError as exc:
             # Expected for matches where HLTV doesn't publish perf/econ data
-            # (e.g. some lower-tier events). Log as warning, not error.
+            # (e.g. some lower-tier events). Increment attempt counter so
+            # incremental runs don't retry this map beyond max_attempts.
             logger.warning("Map %d perf/econ: no data available (%s)", mapstatsid, exc)
+            match_repo.increment_perf_attempts(match_id, map_number)
             return False
         except Exception as exc:
             logger.error("Map %d perf/econ parse: %s", mapstatsid, exc)
+            match_repo.increment_perf_attempts(match_id, map_number)
             return False
 
         ts       = now()

@@ -53,6 +53,11 @@ class Database:
         self._conn.execute("PRAGMA temp_store = MEMORY")
         # 30s busy timeout — enough for 8 workers to queue up without errors
         self._conn.execute("PRAGMA busy_timeout = 30000")
+        # Memory-mapped I/O: 256 MB — speeds up sequential read scans
+        self._conn.execute("PRAGMA mmap_size = 268435456")
+        # Increase WAL checkpoint interval to 10 000 pages (was 1 000)
+        # so auto-checkpoints happen less often, reducing write I/O spikes
+        self._conn.execute("PRAGMA wal_autocheckpoint = 10000")
         return self._conn
 
     @property
