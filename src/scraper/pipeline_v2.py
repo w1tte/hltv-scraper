@@ -256,7 +256,7 @@ async def _scrape_match(
         # Targeted extraction: ~50–100 KB instead of 5–12 MB per fetch.
         try:
             perf_html = await client.fetch(perf_url, page_type="map_performance",
-                                           ready_selector="[data-fusionchart-config]")
+                                           ready_selector=".player-nick")
             econ_html = await client.fetch(econ_url, page_type="map_economy",
                                            ready_selector="[data-fusionchart-config]")
         except Exception as exc:
@@ -274,6 +274,11 @@ async def _scrape_match(
         try:
             perf_parsed = parse_performance(perf_html, mapstatsid)
             econ_parsed = parse_economy(econ_html, mapstatsid)
+        except ValueError as exc:
+            # Expected for matches where HLTV doesn't publish perf/econ data
+            # (e.g. some lower-tier events). Log as warning, not error.
+            logger.warning("Map %d perf/econ: no data available (%s)", mapstatsid, exc)
+            return False
         except Exception as exc:
             logger.error("Map %d perf/econ parse: %s", mapstatsid, exc)
             return False
