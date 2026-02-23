@@ -80,7 +80,7 @@ async def _scrape_match(
     # Stage A: Match overview
     # ------------------------------------------------------------------ #
     try:
-        html = await client.fetch(base + url, ready_selector=".team1-gradient", page_type="overview")
+        html = await client.fetch(base + url, ready_selector=".match-page", page_type="overview")
     except Exception as exc:
         result["error"] = f"overview fetch: {exc}"
         logger.error("Match %d overview fetch: %s", match_id, exc)
@@ -191,7 +191,8 @@ async def _scrape_match(
         map_number = m.map_number
         map_url    = base + _MAP_STATS_URL.format(mapstatsid=mapstatsid)
         try:
-            map_html = await client.fetch(map_url, page_type="map_stats")
+            map_html = await client.fetch(map_url, page_type="map_stats",
+                                          ready_selector=".stats-table")
         except Exception as exc:
             logger.error("Map %d fetch: %s", mapstatsid, exc)
             return False
@@ -254,8 +255,10 @@ async def _scrape_match(
         # Fetch perf then econ sequentially (same tab).
         # Targeted extraction: ~50–100 KB instead of 5–12 MB per fetch.
         try:
-            perf_html = await client.fetch(perf_url, page_type="map_performance")
-            econ_html = await client.fetch(econ_url, page_type="map_economy")
+            perf_html = await client.fetch(perf_url, page_type="map_performance",
+                                           ready_selector=".standard-box")
+            econ_html = await client.fetch(econ_url, page_type="map_economy",
+                                           ready_selector="[data-fusionchart-config]")
         except Exception as exc:
             logger.error("Map %d perf/econ fetch: %s", mapstatsid, exc)
             return False

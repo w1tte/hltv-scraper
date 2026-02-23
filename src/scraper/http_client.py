@@ -72,14 +72,11 @@ _POLL_INTERVAL = 2
 # consume identically to the full page — all parent/child relationships inside
 # the extracted containers are preserved.
 _JS_EXTRACTORS: dict[str, str] = {
-    # Overview: match result, player lists, veto, round history
+    # Overview: .match-page contains everything (team gradients, mapholders,
+    # veto-box, timeAndEvent). No need to extract sub-elements separately.
     "overview": """(function(){
-        var s=['.match-page','.veto-box','.standard-box'];
-        var p=[];
-        s.forEach(function(q){
-            document.querySelectorAll(q).forEach(function(e){p.push(e.outerHTML);});
-        });
-        return p.length?'<html><body>'+p.join('')+'</body></html>':'';
+        var el=document.querySelector('.match-page');
+        return el?'<html><body>'+el.outerHTML+'</body></html>':'';
     })()""",
 
     # Map stats: score table, player kill/death rows, match-info-box
