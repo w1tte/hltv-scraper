@@ -416,7 +416,7 @@ class HLTVClient:
 
     @retry(
         retry=retry_if_exception_type((CloudflareChallenge, HLTVFetchError)),
-        wait=wait_exponential_jitter(initial=10, max=120, jitter=5),
+        wait=wait_exponential_jitter(initial=3, max=30, jitter=2),
         stop=stop_after_attempt(5),  # overridden in _patch_retry
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,

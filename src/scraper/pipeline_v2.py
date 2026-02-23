@@ -362,26 +362,31 @@ async def _scrape_match(
         )
         return True
 
+    async def staggered(coro_fn, items, delay_s: float = 0.2):
+        """Run coroutines with a small stagger to avoid simultaneous CDP navigation.
+
+        Simultaneous tab navigation in the same browser causes CDP routing
+        errors ('Inspected target navigated or closed'). A 200ms stagger
+        between starts reduces this without sacrificing much throughput.
+        """
+        async def delayed(i, m):
+            if i > 0:
+                await asyncio.sleep(i * delay_s)
+            return await coro_fn(m)
+
+        return await asyncio.gather(
+            *[delayed(i, m) for i, m in enumerate(items)],
+            return_exceptions=True,
+        )
+
     # ---- Stage B: all map stats pages in parallel ----------------------
-    # Each map uses a separate tab from the pool (different mapstatsids,
-    # so no CDP response-routing conflicts). asyncio.gather fires all at
-    # once; the tab pool limits actual concurrency to concurrent_tabs.
-    b_results = await asyncio.gather(
-        *[fetch_map_stats_one(m) for m in playable],
-        return_exceptions=True,
-    )
+    b_results = await staggered(fetch_map_stats_one, playable)
     b_ok = sum(1 for r in b_results if r is True)
     logger.debug("Stage B: %d/%d map stats fetched", b_ok, len(playable))
 
     # ---- Stage C: all maps' perf+econ in parallel ----------------------
-    # Each map's perf→econ is sequential within fetch_perf_econ_one
-    # (avoids wrong-page-type errors for the same mapstatsid). But
-    # different maps run concurrently — their URLs are distinct so
-    # there's no CDP response confusion across maps.
-    c_results = await asyncio.gather(
-        *[fetch_perf_econ_one(m) for m in playable],
-        return_exceptions=True,
-    )
+    # Each map's perf→econ is sequential within fetch_perf_econ_one.
+    c_results = await staggered(fetch_perf_econ_one, playable)
     maps_done = sum(1 for r in c_results if r is True)
 
     result["maps_done"] = maps_done
