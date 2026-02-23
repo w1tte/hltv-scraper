@@ -80,9 +80,10 @@ _JS_EXTRACTORS: dict[str, str] = {
     })()""",
 
     # Map stats: score table, player kill/death rows, match-info-box,
-    # half-score breakdown, round history timeline
+    # half-score breakdown, round history timeline.
+    # Note: .totalstats omitted — it's a sub-class of .stats-table (already covered).
     "map_stats": """(function(){
-        var s=['.stats-table','.match-info-box','.totalstats',
+        var s=['.stats-table','.match-info-box',
                '.team-left','.team-right','.match-info-row',
                '.round-history-con'];
         var p=[];
@@ -310,7 +311,11 @@ class HLTVClient:
         try:
             # Navigate the tab (preserves Cloudflare cookies)
             await tab.get(url)
-            await asyncio.sleep(self._config.page_load_wait)
+            # When we have a ready_selector we'll poll the DOM for content,
+            # so a short initial sleep (just enough for title to load) is fine.
+            # Without a ready_selector, keep the full page_load_wait.
+            initial_wait = 0.2 if ready_selector else self._config.page_load_wait
+            await asyncio.sleep(initial_wait)
 
             # Check for Cloudflare challenge via page title
             # nodriver may return ExceptionDetails instead of str on error
@@ -372,8 +377,12 @@ class HLTVClient:
                 html = ""
 
             if len(html) < _min_size:
-                # Page still rendering — wait and retry extraction
-                await asyncio.sleep(self._config.page_load_wait)
+                # Page still rendering — re-poll selector (if any) then retry.
+                # With a ready_selector we trust the DOM check over a blind sleep.
+                if ready_selector:
+                    await self._wait_for_selector(tab, url, ready_selector)
+                else:
+                    await asyncio.sleep(self._config.page_load_wait)
                 if extractor_js:
                     html = await tab.evaluate(extractor_js)
                 else:
@@ -462,13 +471,19 @@ class HLTVClient:
         """
         js = f"!!document.querySelector({selector!r})"
         elapsed = 0.0
-        interval = 0.5
+        # Start polling fast (0.1s), back off to 0.5s after first few misses.
+        # JS-rendered content on a warm tab often appears within 100–200 ms.
+        interval = 0.1
+        polls = 0
         while elapsed < timeout:
             found = await tab.evaluate(js)
             if found is True:
                 return
             await asyncio.sleep(interval)
             elapsed += interval
+            polls += 1
+            if polls >= 3:  # after 300 ms, slow down to 0.5 s intervals
+                interval = 0.5
         raise HLTVFetchError(
             f"Ready selector {selector!r} not found on {url} "
             f"after {timeout:.0f}s",
