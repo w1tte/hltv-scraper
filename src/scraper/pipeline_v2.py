@@ -69,6 +69,13 @@ async def _scrape_match(
     def now() -> str:
         return datetime.now(timezone.utc).isoformat()
 
+    async def async_save(html: str, **kwargs) -> None:
+        """Save HTML in a thread-pool executor (non-blocking) if save_html is set."""
+        if not config.save_html:
+            return
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, lambda: storage.save(html, **kwargs))
+
     # ------------------------------------------------------------------ #
     # Stage A: Match overview
     # ------------------------------------------------------------------ #
@@ -80,7 +87,7 @@ async def _scrape_match(
         discovery_repo.update_status(match_id, "failed")
         return result
 
-    storage.save(html, match_id=match_id, page_type="overview")
+    await async_save(html, match_id=match_id, page_type="overview")
 
     try:
         parsed = parse_match_overview(html, match_id)
@@ -189,8 +196,8 @@ async def _scrape_match(
             logger.error("Map %d fetch: %s", mapstatsid, exc)
             return False
 
-        storage.save(map_html, match_id=match_id,
-                     mapstatsid=mapstatsid, page_type="map_stats")
+        await async_save(map_html, match_id=match_id,
+                         mapstatsid=mapstatsid, page_type="map_stats")
         try:
             map_parsed = parse_map_stats(map_html, mapstatsid)
         except Exception as exc:
@@ -256,10 +263,13 @@ async def _scrape_match(
             logger.error("Map %d perf/econ fetch: %s", mapstatsid, exc)
             return False
 
-        storage.save(perf_html, match_id=match_id,
-                     mapstatsid=mapstatsid, page_type="map_performance")
-        storage.save(econ_html, match_id=match_id,
-                     mapstatsid=mapstatsid, page_type="map_economy")
+        # Fire both saves concurrently in the thread pool (non-blocking)
+        await asyncio.gather(
+            async_save(perf_html, match_id=match_id,
+                       mapstatsid=mapstatsid, page_type="map_performance"),
+            async_save(econ_html, match_id=match_id,
+                       mapstatsid=mapstatsid, page_type="map_economy"),
+        )
 
         try:
             perf_parsed = parse_performance(perf_html, mapstatsid)

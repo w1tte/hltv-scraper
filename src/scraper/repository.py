@@ -339,28 +339,23 @@ class MatchRepository:
         (rollback on any error).
         """
         with self.conn:
-            for row in stats_data:
-                self.conn.execute(UPSERT_PLAYER_STATS, row)
-            for row in rounds_data:
-                self.conn.execute(UPSERT_ROUND, row)
+            self.conn.executemany(UPSERT_PLAYER_STATS, stats_data)
+            self.conn.executemany(UPSERT_ROUND, rounds_data)
 
     def upsert_map_player_stats(self, stats_data: list[dict]) -> None:
         """Atomically upsert multiple player stats rows."""
         with self.conn:
-            for row in stats_data:
-                self.conn.execute(UPSERT_PLAYER_STATS, row)
+            self.conn.executemany(UPSERT_PLAYER_STATS, stats_data)
 
     def upsert_map_rounds(self, rounds_data: list[dict]) -> None:
         """Atomically upsert multiple round history rows."""
         with self.conn:
-            for row in rounds_data:
-                self.conn.execute(UPSERT_ROUND, row)
+            self.conn.executemany(UPSERT_ROUND, rounds_data)
 
     def upsert_map_economy(self, economy_data: list[dict]) -> None:
         """Atomically upsert multiple economy rows."""
         with self.conn:
-            for row in economy_data:
-                self.conn.execute(UPSERT_ECONOMY, row)
+            self.conn.executemany(UPSERT_ECONOMY, economy_data)
 
     def upsert_kill_matrix(self, data: dict) -> None:
         """Insert or update a single kill matrix record."""
@@ -380,12 +375,9 @@ class MatchRepository:
         kill matrix rows -- all in a single transaction.
         """
         with self.conn:
-            for row in perf_stats:
-                self.conn.execute(UPSERT_PLAYER_STATS, row)
-            for row in economy_data:
-                self.conn.execute(UPSERT_ECONOMY, row)
-            for row in kill_matrix_data:
-                self.conn.execute(UPSERT_KILL_MATRIX, row)
+            self.conn.executemany(UPSERT_PLAYER_STATS, perf_stats)
+            self.conn.executemany(UPSERT_ECONOMY, economy_data)
+            self.conn.executemany(UPSERT_KILL_MATRIX, kill_matrix_data)
 
     # ------------------------------------------------------------------
     # Read methods

@@ -33,6 +33,11 @@ class ScraperConfig:
     # Content marker checks catch under-loaded pages, so 0.75s is safe.
     page_load_wait: float = 0.75
 
+    # Save raw HTML to disk for debugging/resumability.
+    # Set to False for large production runs to avoid 250k+ gzip files and
+    # blocking I/O overhead (~10 sync writes per match).
+    save_html: bool = True
+
     # Number of browser tabs per instance
     # Must be 1: nodriver's CDP routing mixes responses between concurrent
     # tabs in the same browser, causing ~48% of perf/econ fetches to get

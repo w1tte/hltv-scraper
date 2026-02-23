@@ -130,6 +130,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Minimum delay between requests in seconds (default: 0.5)",
     )
+    parser.add_argument(
+        "--no-save-html",
+        action="store_true",
+        default=False,
+        help="Skip saving raw HTML to disk (faster, less disk usage; DB data is still written)",
+    )
     return parser
 
 
@@ -197,6 +203,8 @@ async def async_main(args: argparse.Namespace) -> None:
         config_overrides["page_load_wait"] = args.page_load_wait
     if args.min_delay is not None:
         config_overrides["min_delay"] = args.min_delay
+    if args.no_save_html:
+        config_overrides["save_html"] = False
     config = ScraperConfig(**config_overrides)
 
     mode = "full" if args.full else "incremental"
