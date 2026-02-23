@@ -186,13 +186,17 @@ async def _scrape_match(
     }
 
     # ---- Stage B helper ------------------------------------------------
-    async def fetch_map_stats_one(m) -> bool:
+    async def fetch_map_stats_one(m, tab=None) -> bool:
         mapstatsid = m.mapstatsid
         map_number = m.map_number
         map_url    = base + _MAP_STATS_URL.format(mapstatsid=mapstatsid)
         try:
-            map_html = await client.fetch(map_url, page_type="map_stats",
-                                          ready_selector=".stats-table")
+            if tab is not None:
+                map_html = await client.fetch_with_tab(
+                    tab, map_url, page_type="map_stats", ready_selector=".stats-table")
+            else:
+                map_html = await client.fetch(
+                    map_url, page_type="map_stats", ready_selector=".stats-table")
         except Exception as exc:
             logger.error("Map %d fetch: %s", mapstatsid, exc)
             return False
@@ -246,19 +250,27 @@ async def _scrape_match(
         return True
 
     # ---- Stage C helper ------------------------------------------------
-    async def fetch_perf_econ_one(m) -> bool:
+    async def fetch_perf_econ_one(m, tab=None) -> bool:
         mapstatsid = m.mapstatsid
         map_number = m.map_number
         perf_url   = base + _PERF_URL.format(mapstatsid=mapstatsid)
         econ_url   = base + _ECON_URL.format(mapstatsid=mapstatsid)
 
-        # Fetch perf then econ sequentially (same tab).
+        # Fetch perf then econ sequentially on the same tab (or any free tab).
         # Targeted extraction: ~50–100 KB instead of 5–12 MB per fetch.
         try:
-            perf_html = await client.fetch(perf_url, page_type="map_performance",
-                                           ready_selector=".player-nick")
-            econ_html = await client.fetch(econ_url, page_type="map_economy",
-                                           ready_selector="[data-fusionchart-config]")
+            if tab is not None:
+                perf_html = await client.fetch_with_tab(
+                    tab, perf_url, page_type="map_performance",
+                    ready_selector=".player-nick")
+                econ_html = await client.fetch_with_tab(
+                    tab, econ_url, page_type="map_economy",
+                    ready_selector="[data-fusionchart-config]")
+            else:
+                perf_html = await client.fetch(perf_url, page_type="map_performance",
+                                               ready_selector=".player-nick")
+                econ_html = await client.fetch(econ_url, page_type="map_economy",
+                                               ready_selector="[data-fusionchart-config]")
         except ValueError as exc:
             # Page loaded but no data (e.g. no player stats for this event).
             logger.warning("Map %d perf/econ: no data on page (%s)", mapstatsid, exc)
@@ -376,16 +388,20 @@ async def _scrape_match(
         return True
 
     async def scrape_map_pipeline(i: int, m) -> bool:
-        """Run B→C for one map.  Stagger starts by 0.1 s to avoid
-        simultaneous CDP navigation, but chain B→C immediately within
-        each map (no waiting for other maps' B to finish first).
+        """Run B→C for one map on a single pinned tab.
+
+        Stagger map starts by 0.1 s to avoid all tabs navigating at the
+        exact same instant.  Within each map, the same tab is pinned for
+        stats → perf → econ: only ONE CDP operation is ever in flight on
+        that tab at any time, eliminating 'navigated or closed' errors.
         """
         if i > 0:
             await asyncio.sleep(i * 0.1)
-        b_ok = await fetch_map_stats_one(m)
-        if not b_ok:
-            return False
-        return await fetch_perf_econ_one(m)
+        async with client.pinned_tab() as tab:
+            b_ok = await fetch_map_stats_one(m, tab)
+            if not b_ok:
+                return False
+            return await fetch_perf_econ_one(m, tab)
 
     # ---- Stages B + C: pipelined per-map --------------------------------
     # Each map runs stats → perf/econ back-to-back on its own tab.

@@ -21,6 +21,7 @@ Why nodriver instead of curl_cffi:
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from typing import Any
 
 import nodriver
@@ -555,6 +556,49 @@ class HLTVClient:
         finally:
             self._tab_pool.put_nowait(tab)
 
+    @asynccontextmanager
+    async def pinned_tab(self):
+        """Async context manager that pins a single tab for multiple fetches.
+
+        Acquires one tab from the pool and holds it for the lifetime of the
+        ``async with`` block.  Use this when a pipeline makes several
+        sequential fetches that must not be interrupted by another pipeline
+        grabbing the same tab mid-flight.
+
+        Example::
+
+            async with client.pinned_tab() as tab:
+                stats_html = await client.fetch_with_tab(tab, stats_url, ...)
+                perf_html  = await client.fetch_with_tab(tab, perf_url, ...)
+                econ_html  = await client.fetch_with_tab(tab, econ_url, ...)
+        """
+        if self._browser is None or not self._tabs:
+            raise HLTVFetchError("Browser not started. Call start() first.", url="")
+        tab = await self._tab_pool.get()
+        try:
+            yield tab
+        finally:
+            self._tab_pool.put_nowait(tab)
+
+    async def fetch_with_tab(
+        self, tab, url: str,
+        content_marker: str | None = None,
+        ready_selector: str | None = None,
+        page_type: str | None = None,
+    ) -> str:
+        """Fetch a URL using a *specific* (already-acquired) tab.
+
+        Use inside a ``pinned_tab()`` context to keep the same tab for a
+        series of sequential fetches — prevents other pipelines from
+        interleaving on the same tab.
+        """
+        return await self._fetch_with_tab(
+            tab, url,
+            content_marker=content_marker,
+            ready_selector=ready_selector,
+            page_type=page_type,
+        )
+
     async def fetch_many(
         self, urls: list[str],
         content_marker: str | None = None,
@@ -586,17 +630,53 @@ class HLTVClient:
         return list(results)
 
     async def close(self) -> None:
-        """Stop the Chrome browser and clean up subprocess transports."""
-        if self._browser:
+        """Stop Chrome, clean up temp profile dir, and kill orphan subprocesses.
+
+        Uses nodriver's ``util.free()`` so the temp ``/tmp/uc_*`` profile dir
+        is removed.  Then escalates from SIGTERM → SIGKILL for any surviving
+        Chrome child processes to prevent accumulation across runs.
+        """
+        if not self._browser:
+            return
+
+        browser = self._browser
+        self._browser = None
+        self._tabs.clear()
+        self._tab_pool = None
+
+        # nodriver util.free(): stops browser + deletes /tmp/uc_* profile dir
+        try:
+            import nodriver.core.util as _nd_util
+            task = _nd_util.free(browser)
+            if task is not None:
+                try:
+                    await asyncio.wait_for(asyncio.shield(task), timeout=4.0)
+                except (asyncio.TimeoutError, Exception):
+                    pass
+        except Exception:
+            # Fall back to plain stop() if util.free() is unavailable
             try:
-                self._browser.stop()
+                browser.stop()
             except Exception:
                 pass
-            # Give the event loop a chance to process transport cleanup
-            await asyncio.sleep(0.5)
-            self._browser = None
-            self._tabs.clear()
-            self._tab_pool = None
+
+        await asyncio.sleep(0.3)
+
+        # Kill any surviving Chrome / Xvfb children of this browser's PID
+        try:
+            import os, signal, psutil
+            pid = getattr(browser, "_process_pid", None)
+            if pid:
+                for proc in psutil.process_iter(["pid", "ppid", "name"]):
+                    try:
+                        if proc.info["ppid"] == pid or proc.info["pid"] == pid:
+                            proc.send_signal(signal.SIGKILL)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+        except ImportError:
+            pass  # psutil optional — best-effort only
+        except Exception:
+            pass
 
     async def __aenter__(self) -> "HLTVClient":
         await self.start()
