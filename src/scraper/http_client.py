@@ -81,9 +81,10 @@ _JS_EXTRACTORS: dict[str, str] = {
 
     # Map stats: score table, player kill/death rows, match-info-box,
     # half-score breakdown, round history timeline.
-    # Note: .totalstats omitted — it's a sub-class of .stats-table (already covered).
+    # .totalstats kept separately: some maps use class="totalstats" without
+    # the "stats-table" class, so selecting only .stats-table misses them.
     "map_stats": """(function(){
-        var s=['.stats-table','.match-info-box',
+        var s=['.stats-table','.totalstats','.match-info-box',
                '.team-left','.team-right','.match-info-row',
                '.round-history-con'];
         var p=[];
@@ -143,6 +144,12 @@ class HLTVClient:
         self._browser: nodriver.Browser | None = None
         self._tabs: list = []
         self._tab_pool: asyncio.Queue | None = None
+        # Serialises tab.get(url) + title-check across concurrent tabs.
+        # Prevents simultaneous CDP navigation commands on the same WS socket
+        # which causes "Inspected target navigated or closed" -32000 errors.
+        # The lock is released BEFORE selector polling and extraction, so
+        # parallel evaluations on other tabs are not blocked.
+        self._nav_lock: asyncio.Lock = asyncio.Lock()
 
         # Request counters
         self._request_count = 0
@@ -309,19 +316,25 @@ class HLTVClient:
         self._request_count += 1
 
         try:
-            # Navigate the tab (preserves Cloudflare cookies)
-            await tab.get(url)
-            # When we have a ready_selector we'll poll the DOM for content,
-            # so a short initial sleep (just enough for title to load) is fine.
-            # Without a ready_selector, keep the full page_load_wait.
-            initial_wait = 0.2 if ready_selector else self._config.page_load_wait
-            await asyncio.sleep(initial_wait)
+            # Serialise navigation across tabs: only one tab.get(url) +
+            # title-check runs at a time per browser.  This prevents
+            # simultaneous CDP navigation commands on the shared WS socket
+            # which cause "Inspected target navigated or closed" -32000 errors.
+            # The lock is released before the slower selector poll + extraction
+            # so parallel evaluations on other tabs still run freely.
+            async with self._nav_lock:
+                await tab.get(url)
+                # Short initial sleep: just enough for document.title to load.
+                # With ready_selector we'll poll the DOM anyway; without it we
+                # need the full page_load_wait for content to appear.
+                initial_wait = 0.2 if ready_selector else self._config.page_load_wait
+                await asyncio.sleep(initial_wait)
 
-            # Check for Cloudflare challenge via page title
-            # nodriver may return ExceptionDetails instead of str on error
-            title = await tab.evaluate("document.title")
-            if not isinstance(title, str):
-                title = ""
+                # Check for Cloudflare challenge via page title
+                # nodriver may return ExceptionDetails instead of str on error
+                title = await tab.evaluate("document.title")
+                if not isinstance(title, str):
+                    title = ""
 
             if any(sig in title for sig in _CHALLENGE_TITLES):
                 # Poll until challenge clears — click the Turnstile checkbox each cycle
