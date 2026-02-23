@@ -251,13 +251,17 @@ async def _scrape_match(
         perf_url   = base + _PERF_URL.format(mapstatsid=mapstatsid)
         econ_url   = base + _ECON_URL.format(mapstatsid=mapstatsid)
 
-        # Fetch perf then econ sequentially (same tab, avoids wrong-page errors)
+        # Fetch perf then econ sequentially.
+        # Content markers are page-specific strings that don't appear in
+        # sidebars or other HLTV pages, catching wrong-page serves early.
         try:
             perf_html = await client.fetch(
-                perf_url, content_marker="data-fusionchart-config"
+                perf_url,
+                content_marker="player-nick",  # appears 10× on perf page, 0 elsewhere
             )
             econ_html = await client.fetch(
-                econ_url, content_marker="data-fusionchart-config"
+                econ_url,
+                content_marker=f"/economy/mapstatsid/{mapstatsid}",  # page-specific URL
             )
         except Exception as exc:
             logger.error("Map %d perf/econ fetch: %s", mapstatsid, exc)

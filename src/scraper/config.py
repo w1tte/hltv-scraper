@@ -38,11 +38,11 @@ class ScraperConfig:
     # blocking I/O overhead (~10 sync writes per match).
     save_html: bool = True
 
-    # Number of browser tabs per instance
-    # Must be 1: nodriver's CDP routing mixes responses between concurrent
-    # tabs in the same browser, causing ~48% of perf/econ fetches to get
-    # wrong-page content. Use more workers instead for throughput.
-    concurrent_tabs: int = 3  # 3 tabs: one per map in a BO3, enables parallel map fetching
+    # Number of browser tabs per instance.
+    # Keep at 1: nodriver's CDP routing mixes responses between concurrent
+    # tabs in the same browser — parallel navigation causes wrong pages to
+    # be served (~8% error rate at tabs=3). Use more workers for throughput.
+    concurrent_tabs: int = 1
 
     # Seconds to poll for Cloudflare challenge to clear during fetches
     challenge_wait: float = 90.0
