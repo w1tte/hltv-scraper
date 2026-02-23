@@ -47,11 +47,11 @@ class TestDatabasePragmas:
         db.close()
 
     def test_database_busy_timeout(self, tmp_path):
-        """After connect, busy_timeout is set to 5000ms."""
+        """After connect, busy_timeout is set to 30000ms."""
         db = Database(tmp_path / "test.db")
         db.connect()
         timeout = db.conn.execute("PRAGMA busy_timeout").fetchone()[0]
-        assert timeout == 5000
+        assert timeout == 30000
         db.close()
 
 

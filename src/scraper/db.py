@@ -45,7 +45,14 @@ class Database:
         # PRAGMAs must be set per-connection
         self._conn.execute("PRAGMA journal_mode = WAL")
         self._conn.execute("PRAGMA foreign_keys = ON")
-        self._conn.execute("PRAGMA busy_timeout = 5000")
+        # NORMAL is safe with WAL and avoids the full fsync on every commit
+        self._conn.execute("PRAGMA synchronous = NORMAL")
+        # 32 MB page cache — reduces I/O for repeated UPSERT lookups
+        self._conn.execute("PRAGMA cache_size = -32000")
+        # Store temp tables/indices in memory
+        self._conn.execute("PRAGMA temp_store = MEMORY")
+        # 30s busy timeout — enough for 8 workers to queue up without errors
+        self._conn.execute("PRAGMA busy_timeout = 30000")
         return self._conn
 
     @property
