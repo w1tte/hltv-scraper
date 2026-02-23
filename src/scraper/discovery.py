@@ -136,7 +136,10 @@ async def run_discovery(
             # 1. Fetch — rotate across all clients for resilience
             url = f"{config.base_url}/results?offset={offset}&gameType={config.game_type}"
             client_index = (stats["pages_fetched"] + stats["errors"]) % len(clients)
-            html = await clients[client_index].fetch(url)
+            html = await clients[client_index].fetch(
+                url,
+                ready_selector=".result-con",  # wait for JS-rendered match list
+            )
 
             # 2. Parse
             matches = parse_results_page(html)
