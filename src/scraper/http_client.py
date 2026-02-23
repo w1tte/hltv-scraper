@@ -404,7 +404,7 @@ class HLTVClient:
                     url=url,
                 )
 
-            if len(html) < 10000:
+            if len(html) < _min_size:
                 raise HLTVFetchError(
                     f"Response too short from {url} ({len(html)} chars)",
                     url=url,
