@@ -65,6 +65,54 @@ _CHALLENGE_TITLES = (
 _WARMUP_TIMEOUT = 90
 _POLL_INTERVAL = 2
 
+# Targeted DOM extractors per page type.
+# Instead of dumping the full 5–12 MB outerHTML, extract only the elements
+# each parser actually reads.  This cuts CDP transfer from ~5 s to ~0.05 s.
+# Returns a minimal "<html><body>…</body></html>" string that parsers can
+# consume identically to the full page — all parent/child relationships inside
+# the extracted containers are preserved.
+_JS_EXTRACTORS: dict[str, str] = {
+    # Overview: match result, player lists, veto, round history
+    "overview": """(function(){
+        var s=['.match-page','.veto-box','.standard-box'];
+        var p=[];
+        s.forEach(function(q){
+            document.querySelectorAll(q).forEach(function(e){p.push(e.outerHTML);});
+        });
+        return p.length?'<html><body>'+p.join('')+'</body></html>':'';
+    })()""",
+
+    # Map stats: score table, player kill/death rows, match-info-box
+    "map_stats": """(function(){
+        var s=['.stats-table','.match-info-box','.totalstats','.veto-box',
+               '.overview-table','.team-left','.team-right'];
+        var p=[];
+        s.forEach(function(q){
+            document.querySelectorAll(q).forEach(function(e){p.push(e.outerHTML);});
+        });
+        return p.length?'<html><body>'+p.join('')+'</body></html>':'';
+    })()""",
+
+    # Performance: player stat cards (standard-box) + kill matrix
+    "map_performance": """(function(){
+        var s=['.standard-box','.killmatrix-content'];
+        var p=[];
+        s.forEach(function(q){
+            document.querySelectorAll(q).forEach(function(e){p.push(e.outerHTML);});
+        });
+        return p.length?'<html><body>'+p.join('')+'</body></html>':'';
+    })()""",
+
+    # Economy: just the FusionChart config element (contains all round data)
+    "map_economy": """(function(){
+        var els=document.querySelectorAll('[data-fusionchart-config]');
+        if(!els.length)return '';
+        var p=[];
+        els.forEach(function(e){p.push(e.outerHTML);});
+        return '<html><body>'+p.join('')+'</body></html>';
+    })()""",
+}
+
 
 class HLTVClient:
     """HTTP client for HLTV using nodriver (real Chrome) for Cloudflare bypass.
@@ -236,6 +284,7 @@ class HLTVClient:
         self, tab, url: str,
         content_marker: str | None = None,
         ready_selector: str | None = None,
+        page_type: str | None = None,
     ) -> str:
         """Navigate a specific tab to a URL and return the page HTML.
 
@@ -248,9 +297,11 @@ class HLTVClient:
             url: The full URL to fetch.
             content_marker: Optional string that must appear in the HTML text.
             ready_selector: Optional CSS selector that must exist in the DOM
-                before the page is considered loaded.  Uses
-                ``document.querySelector()`` to check the live DOM, which is
-                more reliable than text-matching the serialised HTML.
+                before the page is considered loaded.
+            page_type: If set and present in _JS_EXTRACTORS, runs a targeted
+                JS expression to extract only the elements the parser needs
+                (~50–100 KB) instead of the full 5–12 MB outerHTML.  This
+                cuts CDP transfer time from ~5 s to ~0.05 s per fetch.
         """
         # Use per-tab rate limiter so concurrent tabs don't queue behind each other
         tab_rl = self._tab_rate_limiters.get(id(tab), self.rate_limiter)
@@ -309,20 +360,25 @@ class HLTVClient:
             if ready_selector:
                 await self._wait_for_selector(tab, url, ready_selector)
 
-            # Extract full HTML — retry extraction if page hasn't loaded yet
-            # nodriver may return ExceptionDetails instead of str on error
-            html = await tab.evaluate(
-                "document.documentElement.outerHTML"
-            )
+            # Extract HTML — targeted for known page types, full page otherwise.
+            # Targeted extraction cuts CDP transfer from ~5 MB to ~50–100 KB.
+            extractor_js = _JS_EXTRACTORS.get(page_type or "")
+            _min_size = 200 if extractor_js else 10000
+
+            if extractor_js:
+                html = await tab.evaluate(extractor_js)
+            else:
+                html = await tab.evaluate("document.documentElement.outerHTML")
             if not isinstance(html, str):
                 html = ""
 
-            if len(html) < 10000:
-                # Page may still be loading; wait and retry extraction
+            if len(html) < _min_size:
+                # Page still rendering — wait and retry extraction
                 await asyncio.sleep(self._config.page_load_wait)
-                html = await tab.evaluate(
-                    "document.documentElement.outerHTML"
-                )
+                if extractor_js:
+                    html = await tab.evaluate(extractor_js)
+                else:
+                    html = await tab.evaluate("document.documentElement.outerHTML")
                 if not isinstance(html, str):
                     html = ""
 
@@ -361,13 +417,19 @@ class HLTVClient:
                     content_marker, url,
                 )
                 await asyncio.sleep(self._config.page_load_wait)
-                html = await tab.evaluate("document.documentElement.outerHTML")
+                if extractor_js:
+                    html = await tab.evaluate(extractor_js)
+                else:
+                    html = await tab.evaluate("document.documentElement.outerHTML")
                 if not isinstance(html, str):
                     html = ""
 
                 if content_marker not in html:
                     await asyncio.sleep(self._config.page_load_wait * 2)
-                    html = await tab.evaluate("document.documentElement.outerHTML")
+                    if extractor_js:
+                        html = await tab.evaluate(extractor_js)
+                    else:
+                        html = await tab.evaluate("document.documentElement.outerHTML")
                     if not isinstance(html, str):
                         html = ""
 
@@ -425,6 +487,7 @@ class HLTVClient:
         self, url: str,
         content_marker: str | None = None,
         ready_selector: str | None = None,
+        page_type: str | None = None,
     ) -> str:
         """Fetch a URL using a tab from the pool.
 
@@ -439,6 +502,9 @@ class HLTVClient:
                 If provided and not found after retries, raises HLTVFetchError.
             ready_selector: Optional CSS selector that must exist in the
                 live DOM before the page is considered loaded.
+            page_type: If set and a JS extractor exists for this type,
+                extracts only the relevant DOM elements (~50–100 KB) instead
+                of the full 5–12 MB page.  Drastically reduces CDP transfer.
 
         Returns:
             The page HTML as a string.
@@ -453,7 +519,10 @@ class HLTVClient:
         tab = await self._tab_pool.get()
         try:
             return await self._fetch_with_tab(
-                tab, url, content_marker=content_marker, ready_selector=ready_selector,
+                tab, url,
+                content_marker=content_marker,
+                ready_selector=ready_selector,
+                page_type=page_type,
             )
         finally:
             self._tab_pool.put_nowait(tab)

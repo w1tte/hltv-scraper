@@ -80,7 +80,7 @@ async def _scrape_match(
     # Stage A: Match overview
     # ------------------------------------------------------------------ #
     try:
-        html = await client.fetch(base + url, ready_selector=".team1-gradient")
+        html = await client.fetch(base + url, ready_selector=".team1-gradient", page_type="overview")
     except Exception as exc:
         result["error"] = f"overview fetch: {exc}"
         logger.error("Match %d overview fetch: %s", match_id, exc)
@@ -191,7 +191,7 @@ async def _scrape_match(
         map_number = m.map_number
         map_url    = base + _MAP_STATS_URL.format(mapstatsid=mapstatsid)
         try:
-            map_html = await client.fetch(map_url)
+            map_html = await client.fetch(map_url, page_type="map_stats")
         except Exception as exc:
             logger.error("Map %d fetch: %s", mapstatsid, exc)
             return False
@@ -251,19 +251,11 @@ async def _scrape_match(
         perf_url   = base + _PERF_URL.format(mapstatsid=mapstatsid)
         econ_url   = base + _ECON_URL.format(mapstatsid=mapstatsid)
 
-        # Fetch perf then econ sequentially.
-        # Uses generic SSR marker (present in initial HTML, no extra JS wait).
-        # Wrong-page serves are prevented by concurrent_tabs=1 (single tab =
-        # strictly sequential navigation, no CDP routing conflicts).
+        # Fetch perf then econ sequentially (same tab).
+        # Targeted extraction: ~50–100 KB instead of 5–12 MB per fetch.
         try:
-            perf_html = await client.fetch(
-                perf_url,
-                content_marker="data-fusionchart-config",
-            )
-            econ_html = await client.fetch(
-                econ_url,
-                content_marker="data-fusionchart-config",
-            )
+            perf_html = await client.fetch(perf_url, page_type="map_performance")
+            econ_html = await client.fetch(econ_url, page_type="map_economy")
         except Exception as exc:
             logger.error("Map %d perf/econ fetch: %s", mapstatsid, exc)
             return False

@@ -39,10 +39,10 @@ class ScraperConfig:
     save_html: bool = True
 
     # Number of browser tabs per instance.
-    # Keep at 1: nodriver's CDP routing mixes responses between concurrent
-    # tabs in the same browser — parallel navigation causes wrong pages to
-    # be served (~8% error rate at tabs=3). Use more workers for throughput.
-    concurrent_tabs: int = 1
+    # Targeted DOM extraction (page_type param) cuts each fetch payload from
+    # 5–12 MB to ~50–100 KB, making concurrent tab use safe: even if a retry
+    # is needed due to a CDP routing blip, it costs ~0.1 s not ~5 s.
+    concurrent_tabs: int = 3
 
     # Seconds to poll for Cloudflare challenge to clear during fetches
     challenge_wait: float = 90.0
