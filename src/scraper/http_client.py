@@ -79,10 +79,12 @@ _JS_EXTRACTORS: dict[str, str] = {
         return el?'<html><body>'+el.outerHTML+'</body></html>':'';
     })()""",
 
-    # Map stats: score table, player kill/death rows, match-info-box
+    # Map stats: score table, player kill/death rows, match-info-box,
+    # half-score breakdown, round history timeline
     "map_stats": """(function(){
-        var s=['.stats-table','.match-info-box','.totalstats','.veto-box',
-               '.overview-table','.team-left','.team-right'];
+        var s=['.stats-table','.match-info-box','.totalstats',
+               '.team-left','.team-right','.match-info-row',
+               '.round-history-con'];
         var p=[];
         s.forEach(function(q){
             document.querySelectorAll(q).forEach(function(e){p.push(e.outerHTML);});

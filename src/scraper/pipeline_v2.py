@@ -256,7 +256,7 @@ async def _scrape_match(
         # Targeted extraction: ~50–100 KB instead of 5–12 MB per fetch.
         try:
             perf_html = await client.fetch(perf_url, page_type="map_performance",
-                                           ready_selector=".standard-box")
+                                           ready_selector="[data-fusionchart-config]")
             econ_html = await client.fetch(econ_url, page_type="map_economy",
                                            ready_selector="[data-fusionchart-config]")
         except Exception as exc:
