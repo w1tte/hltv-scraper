@@ -165,9 +165,9 @@ async def _scrape_match(
     # ------------------------------------------------------------------ #
     # Stages B + C: parallel per-map fetching
     #
-    # Stage B: all map-stats pages fetched simultaneously (one tab per map).
-    # Stage C: for each map, perf + econ fetched simultaneously, and all
-    #          maps also run in parallel — so a BO3 fires 6 fetches at once.
+    # Per-map pipeline: for each map, fetch stats → perf → econ back-to-back
+    # on the same tab.  All maps run in parallel (staggered 0.1 s apart), so
+    # a BO3 fires up to 3 concurrent tab pipelines at once.
     # ------------------------------------------------------------------ #
     if parsed.is_forfeit:
         result["ok"] = True
@@ -362,32 +362,28 @@ async def _scrape_match(
         )
         return True
 
-    async def staggered(coro_fn, items, delay_s: float = 0.2):
-        """Run coroutines with a small stagger to avoid simultaneous CDP navigation.
-
-        Simultaneous tab navigation in the same browser causes CDP routing
-        errors ('Inspected target navigated or closed'). A 200ms stagger
-        between starts reduces this without sacrificing much throughput.
+    async def scrape_map_pipeline(i: int, m) -> bool:
+        """Run B→C for one map.  Stagger starts by 0.1 s to avoid
+        simultaneous CDP navigation, but chain B→C immediately within
+        each map (no waiting for other maps' B to finish first).
         """
-        async def delayed(i, m):
-            if i > 0:
-                await asyncio.sleep(i * delay_s)
-            return await coro_fn(m)
+        if i > 0:
+            await asyncio.sleep(i * 0.1)
+        b_ok = await fetch_map_stats_one(m)
+        if not b_ok:
+            return False
+        return await fetch_perf_econ_one(m)
 
-        return await asyncio.gather(
-            *[delayed(i, m) for i, m in enumerate(items)],
-            return_exceptions=True,
-        )
-
-    # ---- Stage B: all map stats pages in parallel ----------------------
-    b_results = await staggered(fetch_map_stats_one, playable)
-    b_ok = sum(1 for r in b_results if r is True)
-    logger.debug("Stage B: %d/%d map stats fetched", b_ok, len(playable))
-
-    # ---- Stage C: all maps' perf+econ in parallel ----------------------
-    # Each map's perf→econ is sequential within fetch_perf_econ_one.
-    c_results = await staggered(fetch_perf_econ_one, playable)
-    maps_done = sum(1 for r in c_results if r is True)
+    # ---- Stages B + C: pipelined per-map --------------------------------
+    # Each map runs stats → perf/econ back-to-back on its own tab.
+    # Maps are staggered 0.1 s apart to avoid simultaneous CDP navigation.
+    # As soon as a map's stats fetch completes it immediately starts
+    # perf/econ — no waiting for the other maps' stats to finish first.
+    bc_results = await asyncio.gather(
+        *[scrape_map_pipeline(i, m) for i, m in enumerate(playable)],
+        return_exceptions=True,
+    )
+    maps_done = sum(1 for r in bc_results if r is True)
 
     result["maps_done"] = maps_done
     result["ok"] = True
