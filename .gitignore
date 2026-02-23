@@ -4,3 +4,8 @@ data/
 __pycache__/
 *.pyc
 .pytest_cache/
+# Debug artifacts
+*.png
+debug_*.html
+proxies.txt
+start_proxies.sh
