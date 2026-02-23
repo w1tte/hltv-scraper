@@ -13,9 +13,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV="$SCRIPT_DIR/.venv/bin/hltv-scraper"
 
 cleanup() {
-    # Kill any surviving chrome/Xvfb processes (Python's close() handles
-    # normal exits; this catches SIGKILL'd runs where close() never ran).
-    pkill -9 -f '[Cc]hrome' 2>/dev/null || true
+    # Kill only scraper-owned Chrome processes (those with /tmp/uc_ user-data-dir)
+    # — avoids hitting unrelated Chrome instances on the same host.
+    pkill -9 -f 'user-data-dir=/tmp/uc_' 2>/dev/null || true
+    # Kill Xvfb displays spawned by this run (safe — scraper always uses xvfb-run)
     pkill -9 -f '[Xx]vfb'   2>/dev/null || true
     # Remove stale X lock files and nodriver /tmp/uc_* profile dirs
     rm -f /tmp/.X*-lock 2>/dev/null || true
