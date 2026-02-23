@@ -90,7 +90,8 @@ class HLTVClient:
 
         self._config = config
         self._proxy_url = proxy_url
-        self.rate_limiter = RateLimiter(config)
+        self.rate_limiter = RateLimiter(config)  # kept for global backoff/stats
+        self._tab_rate_limiters: dict[int, RateLimiter] = {}  # per-tab, keyed by id(tab)
         self._browser: nodriver.Browser | None = None
         self._tabs: list = []
         self._tab_pool: asyncio.Queue | None = None
@@ -218,6 +219,7 @@ class HLTVClient:
         self._tabs = [first_tab]
         self._tab_pool = asyncio.Queue()
         self._tab_pool.put_nowait(first_tab)
+        self._tab_rate_limiters[id(first_tab)] = RateLimiter(self._config)
 
         # Additional tabs share the browser's cookie jar (CF clearance)
         for i in range(1, num_tabs):
@@ -225,9 +227,10 @@ class HLTVClient:
             await asyncio.sleep(self._config.page_load_wait)
             self._tabs.append(tab)
             self._tab_pool.put_nowait(tab)
+            self._tab_rate_limiters[id(tab)] = RateLimiter(self._config)
 
         if num_tabs > 1:
-            logger.info("Browser ready with %d tabs", num_tabs)
+            logger.info("Browser ready with %d tabs (per-tab rate limiters)", num_tabs)
 
     async def _fetch_with_tab(
         self, tab, url: str,
@@ -249,7 +252,9 @@ class HLTVClient:
                 ``document.querySelector()`` to check the live DOM, which is
                 more reliable than text-matching the serialised HTML.
         """
-        await self.rate_limiter.wait()
+        # Use per-tab rate limiter so concurrent tabs don't queue behind each other
+        tab_rl = self._tab_rate_limiters.get(id(tab), self.rate_limiter)
+        await tab_rl.wait()
         self._request_count += 1
 
         try:
@@ -291,8 +296,9 @@ class HLTVClient:
                         logger.info("Challenge cleared after %.1fs", elapsed)
                         break
                 else:
-                    # Still challenged after full wait
+                    # Still challenged after full wait — backoff this tab AND global
                     self._challenge_count += 1
+                    tab_rl.backoff()
                     self.rate_limiter.backoff()
                     raise CloudflareChallenge(
                         f"Cloudflare challenge on {url} (title: {title!r})",
@@ -324,6 +330,7 @@ class HLTVClient:
             # These pages pass the size check but are useless — treat as CF challenge
             if html and "Access denied" in title and "cloudflare" in html.lower():
                 self._challenge_count += 1
+                tab_rl.backoff()
                 self.rate_limiter.backoff()
                 raise CloudflareChallenge(
                     f"Cloudflare IP block (Access Denied) on {url} — datacenter proxy blocked",
@@ -334,6 +341,7 @@ class HLTVClient:
             # (catches localized titles not in _CHALLENGE_TITLES)
             if html and "/cdn-cgi/challenge-platform/" in html and "cf-turnstile-response" in html:
                 self._challenge_count += 1
+                tab_rl.backoff()
                 self.rate_limiter.backoff()
                 raise CloudflareChallenge(
                     f"Cloudflare challenge detected in HTML on {url} (title: {title!r})",
@@ -377,7 +385,8 @@ class HLTVClient:
                 f"Failed to fetch {url}: {exc}", url=url
             ) from exc
 
-        # Success
+        # Success — recover this tab's rate limiter
+        tab_rl.recover()
         self.rate_limiter.recover()
         self._success_count += 1
         logger.debug("Fetched %s (%d chars)", url, len(html))

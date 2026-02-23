@@ -100,7 +100,7 @@ async def test_fetch_success_increments_counters(mock_start):
 
 
 # ---------------------------------------------------------------------------
-# Test 3: fetch() calls rate_limiter.wait() before navigation
+# Test 3: fetch() calls per-tab rate_limiter.wait() before navigation
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 @patch("nodriver.start")
@@ -110,12 +110,15 @@ async def test_fetch_calls_rate_limiter_wait(mock_start):
 
     client = HLTVClient(_make_config())
     await client.start()
-    client.rate_limiter.wait = AsyncMock(return_value=0.0)
+
+    # Mock the per-tab rate limiter (concurrent_tabs=1 → single tab)
+    tab_rl = client._tab_rate_limiters[id(client._tabs[0])]
+    tab_rl.wait = AsyncMock(return_value=0.0)
 
     await client.fetch("https://www.hltv.org/test")
     await client.close()
 
-    client.rate_limiter.wait.assert_called_once()
+    tab_rl.wait.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -129,13 +132,16 @@ async def test_fetch_recovers_on_success(mock_start):
 
     client = HLTVClient(_make_config())
     await client.start()
-    client.rate_limiter.wait = AsyncMock(return_value=0.0)
-    client.rate_limiter.recover = MagicMock()
+
+    # Mock the per-tab rate limiter
+    tab_rl = client._tab_rate_limiters[id(client._tabs[0])]
+    tab_rl.wait = AsyncMock(return_value=0.0)
+    tab_rl.recover = MagicMock()
 
     await client.fetch("https://www.hltv.org/test")
     await client.close()
 
-    client.rate_limiter.recover.assert_called_once()
+    tab_rl.recover.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +176,7 @@ async def test_cloudflare_challenge_detected_by_title(mock_start):
 
 
 # ---------------------------------------------------------------------------
-# Test 6: Challenge triggers rate_limiter.backoff()
+# Test 6: Challenge triggers rate_limiter.backoff() on both tab + global
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 @patch("nodriver.start")
@@ -181,7 +187,11 @@ async def test_fetch_backoff_on_challenge(mock_start):
 
     client = HLTVClient(_make_config(max_retries=1))
     await client.start()
-    client.rate_limiter.wait = AsyncMock(return_value=0.0)
+
+    # Mock both the per-tab and global rate limiters
+    tab_rl = client._tab_rate_limiters[id(client._tabs[0])]
+    tab_rl.wait = AsyncMock(return_value=0.0)
+    tab_rl.backoff = MagicMock()
     client.rate_limiter.backoff = MagicMock()
 
     # Replace evaluate to return challenge
@@ -196,6 +206,7 @@ async def test_fetch_backoff_on_challenge(mock_start):
         await client.fetch("https://www.hltv.org/test")
 
     await client.close()
+    tab_rl.backoff.assert_called()
     client.rate_limiter.backoff.assert_called()
 
 

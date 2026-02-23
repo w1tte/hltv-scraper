@@ -14,7 +14,7 @@ class ScraperConfig:
     """
 
     # Rate limiting: delay between requests
-    min_delay: float = 0.5
+    min_delay: float = 0.3
     max_delay: float = 3.0
 
     # Adaptive backoff on challenge/error
@@ -30,8 +30,8 @@ class ScraperConfig:
     max_retries: int = 5
 
     # Seconds to wait after navigation for page to load
-    # Content marker checks catch under-loaded pages, so 1.5s is safe.
-    page_load_wait: float = 1.5
+    # Content marker checks catch under-loaded pages, so 0.75s is safe.
+    page_load_wait: float = 0.75
 
     # Number of browser tabs per instance
     # Must be 1: nodriver's CDP routing mixes responses between concurrent

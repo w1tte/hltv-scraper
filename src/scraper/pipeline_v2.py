@@ -352,18 +352,27 @@ async def _scrape_match(
         )
         return True
 
-    # ---- Run B then C sequentially per map ----------------------------
-    # Parallel across maps caused HLTV rate-limit (wrong page served).
-    # 4 workers in parallel already gives the speedup; stay sequential
-    # within each match to keep per-IP request rate sane.
-    for m in playable:
-        await fetch_map_stats_one(m)
+    # ---- Stage B: all map stats pages in parallel ----------------------
+    # Each map uses a separate tab from the pool (different mapstatsids,
+    # so no CDP response-routing conflicts). asyncio.gather fires all at
+    # once; the tab pool limits actual concurrency to concurrent_tabs.
+    b_results = await asyncio.gather(
+        *[fetch_map_stats_one(m) for m in playable],
+        return_exceptions=True,
+    )
+    b_ok = sum(1 for r in b_results if r is True)
+    logger.debug("Stage B: %d/%d map stats fetched", b_ok, len(playable))
 
-    maps_done = 0
-    for m in playable:
-        ok = await fetch_perf_econ_one(m)
-        if ok:
-            maps_done += 1
+    # ---- Stage C: all maps' perf+econ in parallel ----------------------
+    # Each map's perf→econ is sequential within fetch_perf_econ_one
+    # (avoids wrong-page-type errors for the same mapstatsid). But
+    # different maps run concurrently — their URLs are distinct so
+    # there's no CDP response confusion across maps.
+    c_results = await asyncio.gather(
+        *[fetch_perf_econ_one(m) for m in playable],
+        return_exceptions=True,
+    )
+    maps_done = sum(1 for r in c_results if r is True)
 
     result["maps_done"] = maps_done
     result["ok"] = True
