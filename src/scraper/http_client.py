@@ -476,7 +476,7 @@ class HLTVClient:
         return html
 
     async def _wait_for_selector(
-        self, tab, url: str, selector: str, timeout: float = 15.0,
+        self, tab, url: str, selector: str, timeout: float = 8.0,
     ) -> None:
         """Poll the live DOM until a CSS selector matches an element.
 
@@ -497,6 +497,20 @@ class HLTVClient:
             polls += 1
             if polls >= 3:  # after 300 ms, slow down to 0.5 s intervals
                 interval = 0.5
+        # Selector not found — check if page actually finished loading.
+        # If document.readyState is 'complete', the page is loaded but the
+        # expected element simply isn't there (no data).  Raise ValueError
+        # so tenacity does NOT retry and the pipeline logs it as a warning.
+        # If the page is still loading, raise HLTVFetchError to trigger retry.
+        try:
+            ready = await tab.evaluate("document.readyState === 'complete'")
+        except Exception:
+            ready = False
+        if ready is True:
+            raise ValueError(
+                f"Selector {selector!r} not found on loaded page {url} "
+                f"— data not available"
+            )
         raise HLTVFetchError(
             f"Ready selector {selector!r} not found on {url} "
             f"after {timeout:.0f}s",

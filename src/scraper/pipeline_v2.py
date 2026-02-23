@@ -259,6 +259,11 @@ async def _scrape_match(
                                            ready_selector=".player-nick")
             econ_html = await client.fetch(econ_url, page_type="map_economy",
                                            ready_selector="[data-fusionchart-config]")
+        except ValueError as exc:
+            # Page loaded but no data (e.g. no player stats for this event).
+            logger.warning("Map %d perf/econ: no data on page (%s)", mapstatsid, exc)
+            match_repo.increment_perf_attempts(match_id, map_number)
+            return False
         except Exception as exc:
             logger.error("Map %d perf/econ fetch: %s", mapstatsid, exc)
             return False
