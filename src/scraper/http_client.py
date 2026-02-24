@@ -21,6 +21,7 @@ Why nodriver instead of curl_cffi:
 
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -360,6 +361,7 @@ class HLTVClient:
         tab_rl = self._tab_rate_limiters.get(id(tab), self.rate_limiter)
         await tab_rl.wait()
         self._request_count += 1
+        _t0 = time.monotonic()
 
         try:
             # Direct CDP navigation — skip nodriver's hardcoded 0.5s sleep.
@@ -367,6 +369,7 @@ class HLTVClient:
             # to detect when the DOM is usable.
             import nodriver.cdp.page as cdp_page
             await tab.send(cdp_page.navigate(url))
+            _t_nav = time.monotonic()
             # Minimal wait for DOM to start rendering.  With ready_selector
             # set, _wait_for_selector provides the real gate; without it we
             # fall back to page_load_wait for safety.
@@ -528,7 +531,11 @@ class HLTVClient:
         tab_rl.recover()
         self.rate_limiter.recover()
         self._success_count += 1
-        logger.debug("Fetched %s (%d chars)", url, len(html))
+        _t_done = time.monotonic()
+        logger.debug(
+            "Fetched %s (%d chars) nav=%.3fs total=%.3fs",
+            url, len(html), _t_nav - _t0, _t_done - _t0,
+        )
         return html
 
     async def _wait_for_selector(
