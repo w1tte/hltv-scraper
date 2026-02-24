@@ -437,11 +437,14 @@ class HLTVClient:
             extractor_js = _JS_EXTRACTORS.get(page_type or "")
             _min_size = 200 if extractor_js else 10000
 
+            _t_ext = time.monotonic()
             async with self._eval_lock:
+                _t_lock = time.monotonic()
                 if extractor_js:
                     html = await tab.evaluate(extractor_js)
                 else:
                     html = await tab.evaluate("document.documentElement.outerHTML")
+            _t_ext_done = time.monotonic()
             if not isinstance(html, str):
                 html = ""
 
@@ -540,9 +543,11 @@ class HLTVClient:
         self._success_count += 1
         _t_done = time.monotonic()
         logger.info(
-            "TIMING %s nav=%.2fs sel=%.2fs total=%.2fs (%d chars)",
+            "TIMING %s nav=%.2fs sel=%.2fs lock=%.2fs ext=%.2fs total=%.2fs (%d chars)",
             url.split("/")[-2] if "/mapstatsid/" in url else url.split("/")[-1],
-            _t_nav - _t0, _t_sel_done - _t_sel, _t_done - _t0, len(html),
+            _t_nav - _t0, _t_sel_done - _t_sel,
+            _t_lock - _t_ext, _t_ext_done - _t_lock,
+            _t_done - _t0, len(html),
         )
         return html
 
