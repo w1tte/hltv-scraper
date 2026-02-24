@@ -369,8 +369,8 @@ class HLTVClient:
             # sleep to 0.15s — enough for navigation to commit while being
             # 3× faster. The ready_selector provides the real readiness gate.
             _orig_sleep = tab.sleep
-            async def _fast_sleep(t=0.15):
-                return await _orig_sleep(0.15)
+            async def _fast_sleep(t=0.25):
+                return await _orig_sleep(0.25)
             tab.sleep = _fast_sleep
             try:
                 await tab.get(url)
@@ -451,19 +451,18 @@ class HLTVClient:
                 html = ""
 
             if len(html) < _min_size:
-                # Page still rendering — re-poll selector (if any) then retry.
-                if ready_selector:
-                    await self._wait_for_selector(tab, url, ready_selector)
-                else:
-                    await asyncio.sleep(self._config.page_load_wait)
+                # Targeted extraction returned too little — DOM may still be
+                # rendering.  Brief wait then fall back to full outerHTML
+                # immediately (avoid second 5s selector timeout).
+                logger.debug("Short extraction (%d chars) for %s — retrying", len(html), url)
+                await asyncio.sleep(0.5)
                 async with self._eval_lock:
                     if extractor_js:
                         html = await tab.evaluate(extractor_js)
                     if not isinstance(html, str):
                         html = ""
-                    # If targeted extraction still empty, fall back to full page.
-                    if len(html) < _min_size and extractor_js:
-                        logger.debug("Targeted extraction empty for %s — falling back to full page", url)
+                    if len(html) < _min_size:
+                        logger.debug("Targeted extraction still short — full page fallback for %s", url)
                         html = await tab.evaluate("document.documentElement.outerHTML")
                         if not isinstance(html, str):
                             html = ""
