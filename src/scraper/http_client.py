@@ -166,6 +166,11 @@ class HLTVClient:
         self._browser: nodriver.Browser | None = None
         self._tabs: list = []
         self._tab_pool: asyncio.Queue | None = None
+        # Serialise HTML extraction evaluate() calls across tabs.
+        # Prevents CDP response routing confusion on the shared WebSocket
+        # when multiple tabs evaluate JS simultaneously. Only used for the
+        # extraction step (~10-50ms hold time), NOT for selector polling.
+        self._eval_lock: asyncio.Lock = asyncio.Lock()
 
         # Request counters
         self._request_count = 0
@@ -196,6 +201,7 @@ class HLTVClient:
         """
         logger.warning("Restarting browser (crash recovery)...")
         await self.close()
+        self._eval_lock = asyncio.Lock()  # fresh lock for new browser
         await self.start()
         logger.info("Browser restarted successfully")
 
@@ -407,13 +413,16 @@ class HLTVClient:
 
             # Extract HTML — targeted for known page types, full page otherwise.
             # Targeted extraction cuts CDP transfer from ~5 MB to ~50–100 KB.
+            # The eval_lock serialises extraction across tabs (hold time ~10-50ms)
+            # to prevent CDP response routing confusion on the shared WebSocket.
             extractor_js = _JS_EXTRACTORS.get(page_type or "")
             _min_size = 200 if extractor_js else 10000
 
-            if extractor_js:
-                html = await tab.evaluate(extractor_js)
-            else:
-                html = await tab.evaluate("document.documentElement.outerHTML")
+            async with self._eval_lock:
+                if extractor_js:
+                    html = await tab.evaluate(extractor_js)
+                else:
+                    html = await tab.evaluate("document.documentElement.outerHTML")
             if not isinstance(html, str):
                 html = ""
 
@@ -423,18 +432,18 @@ class HLTVClient:
                     await self._wait_for_selector(tab, url, ready_selector)
                 else:
                     await asyncio.sleep(self._config.page_load_wait)
-                if extractor_js:
-                    html = await tab.evaluate(extractor_js)
-                if not isinstance(html, str):
-                    html = ""
-                # If targeted extraction still empty, fall back to full page.
-                # Some matches have different DOM structures.
-                if len(html) < _min_size and extractor_js:
-                    logger.debug("Targeted extraction empty for %s — falling back to full page", url)
-                    html = await tab.evaluate("document.documentElement.outerHTML")
+                async with self._eval_lock:
+                    if extractor_js:
+                        html = await tab.evaluate(extractor_js)
                     if not isinstance(html, str):
                         html = ""
-                    _min_size = 10000  # use full-page threshold for size check
+                    # If targeted extraction still empty, fall back to full page.
+                    if len(html) < _min_size and extractor_js:
+                        logger.debug("Targeted extraction empty for %s — falling back to full page", url)
+                        html = await tab.evaluate("document.documentElement.outerHTML")
+                        if not isinstance(html, str):
+                            html = ""
+                        _min_size = 10000
 
             # Detect Cloudflare IP block (error 1005/1006/1007 — Access Denied)
             # These pages pass the size check but are useless — treat as CF challenge
