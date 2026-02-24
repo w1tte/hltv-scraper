@@ -73,21 +73,11 @@ _POLL_INTERVAL = 2
 # consume identically to the full page — all parent/child relationships inside
 # the extracted containers are preserved.
 _JS_EXTRACTORS: dict[str, str] = {
-    # Overview: .match-page contains everything (team gradients, mapholders,
-    # veto-box, timeAndEvent). No need to extract sub-elements separately.
+    # Overview: extract only elements the match_parser actually selects.
     "overview": """(function(){
-        var el=document.querySelector('.match-page');
-        return el?'<html><body>'+el.outerHTML+'</body></html>':'';
-    })()""",
-
-    # Map stats: score table, player kill/death rows, match-info-box,
-    # half-score breakdown, round history timeline.
-    # .totalstats kept separately: some maps use class="totalstats" without
-    # the "stats-table" class, so selecting only .stats-table misses them.
-    "map_stats": """(function(){
-        var s=['.stats-table','.totalstats','.match-info-box',
-               '.team-left','.team-right','.match-info-row',
-               '.round-history-con'];
+        var s=['.team1-gradient','.team2-gradient','.timeAndEvent',
+               '.padding.preformatted-text','.mapholder','.veto-box',
+               '.standard-headline'];
         var p=[];
         s.forEach(function(q){
             document.querySelectorAll(q).forEach(function(e){p.push(e.outerHTML);});
@@ -95,12 +85,43 @@ _JS_EXTRACTORS: dict[str, str] = {
         return p.length?'<html><body>'+p.join('')+'</body></html>':'';
     })()""",
 
-    # Performance: player stat cards (standard-box) + kill matrix
-    "map_performance": """(function(){
-        var s=['.standard-box','.killmatrix-content'];
+    # Map stats: only what the parser actually selects:
+    # - .match-info-box (map name, score)
+    # - .team-left, .team-right (team names/IDs/scores — small elements)
+    # - .match-info-row (half-score breakdown)
+    # - .stats-table.totalstats (player scoreboard — 2 tables)
+    # - .round-history-con (round timeline)
+    # Deduplicated: elements already inside a captured parent are skipped.
+    "map_stats": """(function(){
+        var s=['.match-info-box','.team-left','.team-right',
+               '.match-info-row','.stats-table.totalstats',
+               '.totalstats','.round-history-con'];
+        var seen=new Set();
         var p=[];
         s.forEach(function(q){
-            document.querySelectorAll(q).forEach(function(e){p.push(e.outerHTML);});
+            document.querySelectorAll(q).forEach(function(e){
+                if(seen.has(e))return;
+                seen.add(e);
+                p.push(e.outerHTML);
+            });
+        });
+        return p.length?'<html><body>'+p.join('')+'</body></html>':'';
+    })()""",
+
+    # Performance: player stat cards + kill matrix + overview table.
+    # Parser uses [data-fusionchart-config] and walks up to .standard-box parent.
+    # We extract only .standard-box that contain a chart, plus killmatrix and overview.
+    "map_performance": """(function(){
+        var p=[], seen=new Set();
+        document.querySelectorAll('[data-fusionchart-config]').forEach(function(el){
+            var box=el.closest('.standard-box');
+            var target=box||el;
+            if(!seen.has(target)){seen.add(target);p.push(target.outerHTML);}
+        });
+        ['.killmatrix-content','.overview-table'].forEach(function(q){
+            document.querySelectorAll(q).forEach(function(e){
+                if(!seen.has(e)){seen.add(e);p.push(e.outerHTML);}
+            });
         });
         return p.length?'<html><body>'+p.join('')+'</body></html>':'';
     })()""",

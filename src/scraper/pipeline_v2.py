@@ -80,7 +80,7 @@ async def _scrape_match(
     # Stage A: Match overview
     # ------------------------------------------------------------------ #
     try:
-        html = await client.fetch(base + url, ready_selector=".match-page", page_type="overview")
+        html = await client.fetch(base + url, ready_selector=".team1-gradient", page_type="overview")
     except Exception as exc:
         result["error"] = f"overview fetch: {exc}"
         logger.error("Match %d overview fetch: %s", match_id, exc)
