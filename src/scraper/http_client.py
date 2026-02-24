@@ -423,6 +423,11 @@ class HLTVClient:
             _t_sel = time.monotonic()
             if ready_selector:
                 await self._wait_for_selector(tab, url, ready_selector)
+                # Brief settle time for remaining DOM elements to render.
+                # SSR pages deliver .stats-table ~100ms before .match-info-box;
+                # this 100ms pause lets the full DOM stabilize without the
+                # 500ms cost of nodriver's tab.get() sleep.
+                await asyncio.sleep(0.1)
             _t_sel_done = time.monotonic()
 
             # Extract HTML — targeted for known page types, full page otherwise.
