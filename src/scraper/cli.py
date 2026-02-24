@@ -270,12 +270,54 @@ async def async_main(args: argparse.Namespace) -> None:
                     f" via {proxy}" if proxy else "",
                 )
                 if i < count - 1:
-                    await asyncio.sleep(2.0)
+                    await asyncio.sleep(1.0)
             return pool
 
         if use_v2:
-            # v2: flat pool — each browser owns one match end-to-end
-            worker_pool = await create_pool(args.workers, "worker", 0)
+            # v2: flat pool — each browser owns one match end-to-end.
+            # Overlap discovery with browser warmup: start browser 1 first,
+            # then run discovery + warm up remaining browsers in parallel.
+            first_proxy = proxies[0] if proxies else None
+            first_client = HLTVClient(config, proxy_url=first_proxy)
+            await first_client.start()
+            clients_to_close.append(first_client)
+            logger.info("Browser 1/%d ready (worker)", args.workers)
+
+            async def _warm_remaining():
+                """Start browsers 2..N with staggered delays."""
+                pool = []
+                for i in range(1, args.workers):
+                    proxy = proxies[i % len(proxies)] if proxies else None
+                    c = HLTVClient(config, proxy_url=proxy)
+                    await c.start()
+                    pool.append(c)
+                    clients_to_close.append(c)
+                    logger.info(
+                        "Browser %d/%d ready (worker%s)",
+                        i + 1, args.workers,
+                        f" via {proxy}" if proxy else "",
+                    )
+                    if i < args.workers - 1:
+                        await asyncio.sleep(1.0)
+                return pool
+
+            # Run discovery on first browser while warming up the rest
+            warmup_task = asyncio.create_task(_warm_remaining())
+
+            from scraper.discovery import run_discovery
+            from scraper.pipeline import ShutdownHandler as _SH
+            disc_result = await run_discovery(
+                [first_client], discovery_repo, storage, config,
+                incremental=not args.full, shutdown=shutdown,
+            )
+            logger.info(
+                "Discovery complete — %d matches found",
+                disc_result.get("matches_found", 0),
+            )
+
+            # Wait for remaining browsers to finish warming up
+            remaining = await warmup_task
+            worker_pool = [first_client] + remaining
 
             results = await run_pipeline_v2(
                 clients=worker_pool,
@@ -286,6 +328,7 @@ async def async_main(args: argparse.Namespace) -> None:
                 shutdown=shutdown,
                 incremental=not args.full,
                 force_rescrape=args.force_rescrape,
+                skip_discovery=True,
             )
         else:
             # v1: three separate pools per stage

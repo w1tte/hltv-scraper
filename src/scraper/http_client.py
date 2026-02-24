@@ -370,9 +370,9 @@ class HLTVClient:
             import nodriver.cdp.page as cdp_page
             await tab.send(cdp_page.navigate(url))
             _t_nav = time.monotonic()
-            # Minimal wait for DOM to start rendering.  With ready_selector
-            # set, _wait_for_selector provides the real gate; without it we
-            # fall back to page_load_wait for safety.
+            # Wait for navigation to commit before checking title/DOM.
+            # With ready_selector, keep this minimal — the selector poll
+            # provides the real gate.  Without, use page_load_wait.
             initial_wait = 0.05 if ready_selector else self._config.page_load_wait
             await asyncio.sleep(initial_wait)
 
@@ -547,9 +547,9 @@ class HLTVClient:
         """
         js = f"!!document.querySelector({selector!r})"
         elapsed = 0.0
-        # Start polling fast (0.1s), back off to 0.5s after first few misses.
-        # JS-rendered content on a warm tab often appears within 100–200 ms.
-        interval = 0.1
+        # Start polling very fast — SSR pages usually have content by 50-100ms.
+        # Back off after a few misses to avoid hammering CDP.
+        interval = 0.05
         polls = 0
         while elapsed < timeout:
             found = await tab.evaluate(js)
@@ -558,7 +558,9 @@ class HLTVClient:
             await asyncio.sleep(interval)
             elapsed += interval
             polls += 1
-            if polls >= 3:  # after 300 ms, slow down to 0.5 s intervals
+            if polls >= 2:  # after 100ms, slow to 0.2s
+                interval = 0.2
+            if polls >= 5:  # after 700ms, slow to 0.5s
                 interval = 0.5
         # Selector not found — check if page actually finished loading.
         # If document.readyState is 'complete', the page is loaded but the

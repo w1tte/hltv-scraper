@@ -441,6 +441,7 @@ async def run_pipeline_v2(
     shutdown: ShutdownHandler,
     incremental: bool = True,
     force_rescrape: bool = False,
+    skip_discovery: bool = False,
 ) -> dict:
     """Run pipeline v2: discover all → parallel worker pool per match."""
     results = {
@@ -459,22 +460,25 @@ async def run_pipeline_v2(
     # ------------------------------------------------------------------ #
     # Phase 1: Discovery — completes fully before any match is processed
     # ------------------------------------------------------------------ #
-    logger.info("=== Phase 1: Discovery ===")
-    try:
-        disc = await run_discovery(
-            clients[:1], discovery_repo, storage, config,
-            incremental=incremental, shutdown=shutdown,
-        )
-        results["discovery"] = disc
-        logger.info(
-            "Discovery complete — %d matches found. "
-            "Starting worker pool (%d parallel browsers).",
-            disc.get("matches_found", 0), len(clients),
-        )
-    except Exception as exc:
-        logger.error("Discovery failed: %s", exc)
-        results.update(halted=True, halt_reason=f"Discovery failed: {exc}")
-        return results
+    if skip_discovery:
+        logger.info("=== Phase 1: Discovery (skipped — already done) ===")
+    else:
+        logger.info("=== Phase 1: Discovery ===")
+        try:
+            disc = await run_discovery(
+                clients[:1], discovery_repo, storage, config,
+                incremental=incremental, shutdown=shutdown,
+            )
+            results["discovery"] = disc
+            logger.info(
+                "Discovery complete — %d matches found. "
+                "Starting worker pool (%d parallel browsers).",
+                disc.get("matches_found", 0), len(clients),
+            )
+        except Exception as exc:
+            logger.error("Discovery failed: %s", exc)
+            results.update(halted=True, halt_reason=f"Discovery failed: {exc}")
+            return results
 
     if shutdown.is_set:
         results.update(halted=True, halt_reason="Shutdown requested")
