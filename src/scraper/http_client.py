@@ -310,6 +310,34 @@ class HLTVClient:
                 _WARMUP_TIMEOUT,
             )
 
+        # Block unnecessary resources to speed up page loads.
+        # HLTV pages load images, fonts, CSS, ads, and tracking scripts
+        # that we don't need — only the HTML DOM matters for parsing.
+        # Applied AFTER Cloudflare warmup (Turnstile needs full resources).
+        try:
+            from nodriver.cdp import network as _cdp_net
+            await first_tab.send(_cdp_net.enable())
+            _BLOCKED_PATTERNS = [
+                # Images (biggest bandwidth consumer — HLTV loads team logos, flags, etc.)
+                "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.svg", "*.ico",
+                # Fonts
+                "*.woff", "*.woff2", "*.ttf", "*.eot",
+                # Media
+                "*.mp4", "*.webm",
+                # Analytics & tracking
+                "*google-analytics*", "*googletagmanager*",
+                "*scorecardresearch*", "*doubleclick*", "*adsense*",
+                "*facebook.net*", "*twitter.com/i/*",
+                "*hotjar*", "*clarity.ms*",
+                # HLTV-specific heavy resources
+                "*hltvstatic*img*",
+            ]
+            await first_tab.send(_cdp_net.set_blocked_ur_ls(_BLOCKED_PATTERNS))
+            logger.info("Resource blocking enabled (images/fonts/tracking)")
+            self._blocked_patterns = _BLOCKED_PATTERNS
+        except Exception as exc:
+            logger.warning("Failed to enable resource blocking: %s", exc)
+
         # Build the tab pool
         num_tabs = self._config.concurrent_tabs
         self._tabs = [first_tab]
@@ -321,6 +349,14 @@ class HLTVClient:
         for i in range(1, num_tabs):
             tab = await self._browser.get(warmup_url)
             await asyncio.sleep(self._config.page_load_wait)
+            # Apply resource blocking to each new tab
+            try:
+                from nodriver.cdp import network as _cdp_net
+                await tab.send(_cdp_net.enable())
+                if hasattr(self, '_blocked_patterns'):
+                    await tab.send(_cdp_net.set_blocked_ur_ls(self._blocked_patterns))
+            except Exception:
+                pass
             self._tabs.append(tab)
             self._tab_pool.put_nowait(tab)
             self._tab_rate_limiters[id(tab)] = RateLimiter(self._config)
