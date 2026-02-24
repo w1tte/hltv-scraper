@@ -205,6 +205,11 @@ async def _scrape_match(
                          mapstatsid=mapstatsid, page_type="map_stats")
         try:
             map_parsed = parse_map_stats(map_html, mapstatsid)
+        except ValueError as exc:
+            # Expected: page exists but lacks required elements (e.g. forfeit,
+            # very old match, or HLTV-side data gap).  Not a scraper bug.
+            logger.warning("Map %d parse: %s", mapstatsid, exc)
+            return False
         except Exception as exc:
             logger.error("Map %d parse: %s", mapstatsid, exc)
             return False

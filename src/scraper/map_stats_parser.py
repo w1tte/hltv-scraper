@@ -335,11 +335,19 @@ def _extract_scoreboard(
     Each table has 5 player rows in tbody.
     """
     tables = soup.select(".stats-table.totalstats")
-    if len(tables) < 2:
+    if len(tables) == 0:
+        # Also try bare .totalstats (some pages use this without .stats-table)
+        tables = soup.select(".totalstats")
+    if len(tables) == 0:
         logger.warning(
-            "Expected 2 .stats-table.totalstats tables, found %d", len(tables)
+            "No totalstats tables found — no player data available"
         )
         return []
+    if len(tables) < 2:
+        logger.info(
+            "Only %d totalstats table(s) found (expected 2) — parsing available data",
+            len(tables),
+        )
 
     players: list[PlayerStats] = []
     team_ids = [team_left_id, team_right_id]
