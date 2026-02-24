@@ -420,8 +420,10 @@ class HLTVClient:
                     )
 
             # Wait for ready_selector in the live DOM before extracting HTML
+            _t_sel = time.monotonic()
             if ready_selector:
                 await self._wait_for_selector(tab, url, ready_selector)
+            _t_sel_done = time.monotonic()
 
             # Extract HTML — targeted for known page types, full page otherwise.
             # Targeted extraction cuts CDP transfer from ~5 MB to ~50–100 KB.
@@ -532,9 +534,10 @@ class HLTVClient:
         self.rate_limiter.recover()
         self._success_count += 1
         _t_done = time.monotonic()
-        logger.debug(
-            "Fetched %s (%d chars) nav=%.3fs total=%.3fs",
-            url, len(html), _t_nav - _t0, _t_done - _t0,
+        logger.info(
+            "TIMING %s nav=%.2fs sel=%.2fs total=%.2fs (%d chars)",
+            url.split("/")[-2] if "/mapstatsid/" in url else url.split("/")[-1],
+            _t_nav - _t0, _t_sel_done - _t_sel, _t_done - _t0, len(html),
         )
         return html
 
