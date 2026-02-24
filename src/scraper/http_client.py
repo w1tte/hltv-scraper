@@ -426,10 +426,10 @@ class HLTVClient:
             if ready_selector:
                 await self._wait_for_selector(tab, url, ready_selector)
                 # Brief settle time for remaining DOM elements to render.
-                # SSR pages deliver .stats-table ~100ms before .match-info-box;
-                # this 100ms pause lets the full DOM stabilize without the
-                # 500ms cost of nodriver's tab.get() sleep.
-                await asyncio.sleep(0.1)
+                # SSR pages deliver .stats-table before .match-info-box;
+                # this pause lets the full DOM stabilize so targeted
+                # extraction finds all elements on the first try.
+                await asyncio.sleep(0.2)
             _t_sel_done = time.monotonic()
 
             # Extract HTML — targeted for known page types, full page otherwise.
@@ -450,23 +450,36 @@ class HLTVClient:
             if not isinstance(html, str):
                 html = ""
 
-            if len(html) < _min_size:
-                # Targeted extraction returned too little — DOM may still be
-                # rendering.  Brief wait then fall back to full outerHTML
-                # immediately (avoid second 5s selector timeout).
-                logger.debug("Short extraction (%d chars) for %s — retrying", len(html), url)
-                await asyncio.sleep(0.5)
-                async with self._eval_lock:
-                    if extractor_js:
+            if len(html) < _min_size and extractor_js:
+                # Targeted extraction returned too little — DOM elements
+                # haven't all rendered yet.  Retry targeted extraction
+                # with increasing waits before falling back to full page
+                # (which is 5-6 MB and takes 10-20s through CDP).
+                for retry_wait in (0.3, 0.5, 1.0):
+                    logger.debug("Short extraction (%d chars) for %s — retry in %.1fs",
+                                 len(html), url, retry_wait)
+                    await asyncio.sleep(retry_wait)
+                    async with self._eval_lock:
                         html = await tab.evaluate(extractor_js)
                     if not isinstance(html, str):
                         html = ""
-                    if len(html) < _min_size:
-                        logger.debug("Targeted extraction still short — full page fallback for %s", url)
+                    if len(html) >= _min_size:
+                        break
+                if len(html) < _min_size:
+                    # All retries failed — fall back to full page
+                    logger.info("Targeted extraction failed after retries for %s — full page fallback", url)
+                    async with self._eval_lock:
                         html = await tab.evaluate("document.documentElement.outerHTML")
-                        if not isinstance(html, str):
-                            html = ""
-                        _min_size = 10000
+                    if not isinstance(html, str):
+                        html = ""
+                    _min_size = 10000
+            elif len(html) < _min_size:
+                # Non-targeted extraction too short — wait and retry once
+                await asyncio.sleep(self._config.page_load_wait)
+                async with self._eval_lock:
+                    html = await tab.evaluate("document.documentElement.outerHTML")
+                if not isinstance(html, str):
+                    html = ""
 
             # Detect Cloudflare IP block (error 1005/1006/1007 — Access Denied)
             # These pages pass the size check but are useless — treat as CF challenge
