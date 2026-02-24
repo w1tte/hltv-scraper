@@ -426,48 +426,38 @@ class HLTVClient:
 
             # Extract HTML — targeted for known page types, full page otherwise.
             # Targeted extraction cuts CDP transfer from ~5 MB to ~50–100 KB.
-            # The eval_lock serialises extraction across tabs (hold time ~10-50ms)
-            # to prevent CDP response routing confusion on the shared WebSocket.
+            # No eval_lock needed: pinned-tab architecture guarantees each tab
+            # has only one CDP operation in flight. The lock was causing 10-45s
+            # contention when one tab transferred a large page.
             extractor_js = _JS_EXTRACTORS.get(page_type or "")
             _min_size = 200 if extractor_js else 10000
 
             _t_ext = time.monotonic()
-            async with self._eval_lock:
-                _t_lock = time.monotonic()
-                if extractor_js:
-                    html = await tab.evaluate(extractor_js)
-                else:
-                    html = await tab.evaluate("document.documentElement.outerHTML")
+            _t_lock = _t_ext  # no lock wait
+            if extractor_js:
+                html = await tab.evaluate(extractor_js)
+            else:
+                html = await tab.evaluate("document.documentElement.outerHTML")
             _t_ext_done = time.monotonic()
             if not isinstance(html, str):
                 html = ""
 
             if len(html) < _min_size and extractor_js:
-                # Targeted extraction returned too little — DOM elements
-                # haven't all rendered yet.  Retry targeted extraction
-                # with increasing waits before falling back to full page
-                # (which is 5-6 MB and takes 10-20s through CDP).
-                logger.debug("Short extraction: %d chars (min %d) for %s — page_type=%s",
-                             len(html), _min_size, url, page_type)
-                # Single retry after brief wait — with correct selectors in the
-                # extractor, this should rarely trigger.
+                # Targeted extraction returned too little — retry once
+                logger.debug("Short extraction: %d chars for %s", len(html), url)
                 await asyncio.sleep(0.5)
-                async with self._eval_lock:
-                    html = await tab.evaluate(extractor_js)
+                html = await tab.evaluate(extractor_js)
                 if not isinstance(html, str):
                     html = ""
                 if len(html) < _min_size:
                     logger.info("Targeted extraction failed for %s — full page fallback (%d chars)", url, len(html))
-                    async with self._eval_lock:
-                        html = await tab.evaluate("document.documentElement.outerHTML")
+                    html = await tab.evaluate("document.documentElement.outerHTML")
                     if not isinstance(html, str):
                         html = ""
                     _min_size = 10000
             elif len(html) < _min_size:
-                # Non-targeted extraction too short — wait and retry once
                 await asyncio.sleep(self._config.page_load_wait)
-                async with self._eval_lock:
-                    html = await tab.evaluate("document.documentElement.outerHTML")
+                html = await tab.evaluate("document.documentElement.outerHTML")
                 if not isinstance(html, str):
                     html = ""
 
