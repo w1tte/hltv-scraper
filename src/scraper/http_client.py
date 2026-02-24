@@ -336,7 +336,7 @@ class HLTVClient:
             # When we have a ready_selector we'll poll the DOM for content,
             # so a short initial sleep (just enough for title to load) is fine.
             # Without a ready_selector, keep the full page_load_wait.
-            initial_wait = 0.2 if ready_selector else self._config.page_load_wait
+            initial_wait = 0.1 if ready_selector else self._config.page_load_wait
             await asyncio.sleep(initial_wait)
 
             # Check for Cloudflare challenge via page title
@@ -490,7 +490,7 @@ class HLTVClient:
         return html
 
     async def _wait_for_selector(
-        self, tab, url: str, selector: str, timeout: float = 8.0,
+        self, tab, url: str, selector: str, timeout: float = 5.0,
     ) -> None:
         """Poll the live DOM until a CSS selector matches an element.
 
@@ -533,7 +533,7 @@ class HLTVClient:
 
     @retry(
         retry=retry_if_exception_type((CloudflareChallenge, HLTVFetchError)),
-        wait=wait_exponential_jitter(initial=3, max=30, jitter=2),
+        wait=wait_exponential_jitter(initial=1, max=15, jitter=1),
         stop=stop_after_attempt(5),  # overridden in _patch_retry
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
@@ -608,7 +608,7 @@ class HLTVClient:
 
     @retry(
         retry=retry_if_exception_type((CloudflareChallenge, HLTVFetchError)),
-        wait=wait_exponential_jitter(initial=3, max=30, jitter=2),
+        wait=wait_exponential_jitter(initial=1, max=15, jitter=1),
         stop=stop_after_attempt(5),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,

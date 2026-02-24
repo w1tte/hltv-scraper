@@ -401,7 +401,7 @@ async def _scrape_match(
         that tab at any time, eliminating 'navigated or closed' errors.
         """
         if i > 0:
-            await asyncio.sleep(i * 0.1)
+            await asyncio.sleep(i * 0.05)
         async with client.pinned_tab() as tab:
             b_ok = await fetch_map_stats_one(m, tab)
             if not b_ok:
