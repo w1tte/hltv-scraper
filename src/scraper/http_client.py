@@ -364,11 +364,16 @@ class HLTVClient:
         _t0 = time.monotonic()
 
         try:
-            # Navigate using tab.get() — includes cdp.page.navigate + 0.5s sleep.
-            # The 0.5s sleep is needed for the DOM to fully render so targeted
-            # extraction works reliably.  Reducing it to 0.15-0.25s caused 24%+
-            # of fetches to fall back to full-page outerHTML (5-6MB, 10-65s).
-            await tab.get(url)
+            # Navigate using tab.get() with reduced post-nav sleep.
+            # The .stats-table extractor now matches reliably even at 0.25s,
+            # since the fallback issue was caused by missing selector (.totalstats)
+            # not by insufficient load time.
+            _orig_sleep = tab.sleep
+            tab.sleep = lambda t=0.25: _orig_sleep(0.25)
+            try:
+                await tab.get(url)
+            finally:
+                tab.sleep = _orig_sleep
             _t_nav = time.monotonic()
 
             # Check for Cloudflare challenge via page title
