@@ -40,30 +40,36 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 class ShutdownHandler:
-    """Cross-platform graceful shutdown via Ctrl+C.
+    """Graceful shutdown on SIGINT and SIGTERM.
 
-    Uses ``signal.signal(SIGINT, ...)`` which works on both Windows and
-    Unix (unlike ``loop.add_signal_handler`` which raises
-    ``NotImplementedError`` on Windows).
+    Uses ``signal.signal()`` so it works on both Windows and Unix.
 
-    First Ctrl+C sets a flag so the current operation can finish cleanly.
-    Second Ctrl+C raises ``SystemExit(1)`` for an immediate exit.
+    First signal sets a flag so the current operation can finish cleanly
+    and the ``finally`` block in cli.py can close all browsers.
+    Second signal raises ``SystemExit(1)`` for an immediate exit.
+
+    SIGTERM is handled identically to SIGINT so that process managers
+    (systemd, Docker, sub-agent timeouts) trigger clean browser shutdown
+    instead of killing Python mid-flight and leaking Chrome processes.
     """
 
     def __init__(self) -> None:
         self._event = asyncio.Event()
-        self._original_handler = None
+        self._original_sigint = None
+        self._original_sigterm = None
 
     def install(self) -> None:
-        """Save the current SIGINT handler and install our own."""
-        self._original_handler = signal.getsignal(signal.SIGINT)
-        signal.signal(signal.SIGINT, self._handle)
+        """Install graceful handlers for SIGINT and SIGTERM."""
+        self._original_sigint  = signal.getsignal(signal.SIGINT)
+        self._original_sigterm = signal.getsignal(signal.SIGTERM)
+        signal.signal(signal.SIGINT,  self._handle)
+        signal.signal(signal.SIGTERM, self._handle)
 
     def _handle(self, sig, frame) -> None:  # noqa: ANN001
         if self._event.is_set():
-            logger.warning("Force shutdown")
+            logger.warning("Force shutdown (signal %d)", sig)
             raise SystemExit(1)
-        logger.info("Shutdown requested. Finishing current work...")
+        logger.info("Shutdown requested (signal %d). Finishing current work...", sig)
         self._event.set()
 
     @property
@@ -72,9 +78,11 @@ class ShutdownHandler:
         return self._event.is_set()
 
     def restore(self) -> None:
-        """Restore the original SIGINT handler if one was saved."""
-        if self._original_handler is not None:
-            signal.signal(signal.SIGINT, self._original_handler)
+        """Restore the original signal handlers."""
+        if self._original_sigint is not None:
+            signal.signal(signal.SIGINT, self._original_sigint)
+        if self._original_sigterm is not None:
+            signal.signal(signal.SIGTERM, self._original_sigterm)
 
 
 # ---------------------------------------------------------------------------
