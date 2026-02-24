@@ -332,7 +332,7 @@ class HLTVClient:
                 # HLTV-specific heavy resources
                 "*hltvstatic*img*",
             ]
-            await first_tab.send(_cdp_net.set_blocked_ur_ls(_BLOCKED_PATTERNS))
+            await first_tab.send(_cdp_net.set_blocked_ur_ls(urls=_BLOCKED_PATTERNS))
             logger.info("Resource blocking enabled (images/fonts/tracking)")
             self._blocked_patterns = _BLOCKED_PATTERNS
         except Exception as exc:
@@ -354,7 +354,7 @@ class HLTVClient:
                 from nodriver.cdp import network as _cdp_net
                 await tab.send(_cdp_net.enable())
                 if hasattr(self, '_blocked_patterns'):
-                    await tab.send(_cdp_net.set_blocked_ur_ls(self._blocked_patterns))
+                    await tab.send(_cdp_net.set_blocked_ur_ls(urls=self._blocked_patterns))
             except Exception:
                 pass
             self._tabs.append(tab)
