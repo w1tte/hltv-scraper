@@ -400,17 +400,22 @@ class HLTVClient:
 
             if len(html) < _min_size:
                 # Page still rendering — re-poll selector (if any) then retry.
-                # With a ready_selector we trust the DOM check over a blind sleep.
                 if ready_selector:
                     await self._wait_for_selector(tab, url, ready_selector)
                 else:
                     await asyncio.sleep(self._config.page_load_wait)
                 if extractor_js:
                     html = await tab.evaluate(extractor_js)
-                else:
-                    html = await tab.evaluate("document.documentElement.outerHTML")
                 if not isinstance(html, str):
                     html = ""
+                # If targeted extraction still empty, fall back to full page.
+                # Some matches have different DOM structures.
+                if len(html) < _min_size and extractor_js:
+                    logger.debug("Targeted extraction empty for %s — falling back to full page", url)
+                    html = await tab.evaluate("document.documentElement.outerHTML")
+                    if not isinstance(html, str):
+                        html = ""
+                    _min_size = 10000  # use full-page threshold for size check
 
             # Detect Cloudflare IP block (error 1005/1006/1007 — Access Denied)
             # These pages pass the size check but are useless — treat as CF challenge
