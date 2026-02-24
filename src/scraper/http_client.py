@@ -364,17 +364,19 @@ class HLTVClient:
         _t0 = time.monotonic()
 
         try:
-            # Direct CDP navigation — skip nodriver's hardcoded 0.5s sleep.
-            # We rely on ready_selector guards (present on all page types)
-            # to detect when the DOM is usable.
-            import nodriver.cdp.page as cdp_page
-            await tab.send(cdp_page.navigate(url))
+            # Navigate using tab.get() which does cdp.page.navigate + await self.
+            # We monkey-patch Tab.wait to reduce the hardcoded 0.5s post-nav
+            # sleep to 0.15s — enough for navigation to commit while being
+            # 3× faster. The ready_selector provides the real readiness gate.
+            _orig_sleep = tab.sleep
+            async def _fast_sleep(t=0.15):
+                return await _orig_sleep(0.15)
+            tab.sleep = _fast_sleep
+            try:
+                await tab.get(url)
+            finally:
+                tab.sleep = _orig_sleep
             _t_nav = time.monotonic()
-            # Wait for navigation to commit before checking title/DOM.
-            # With ready_selector, keep this minimal — the selector poll
-            # provides the real gate.  Without, use page_load_wait.
-            initial_wait = 0.05 if ready_selector else self._config.page_load_wait
-            await asyncio.sleep(initial_wait)
 
             # Check for Cloudflare challenge via page title
             # nodriver may return ExceptionDetails instead of str on error
