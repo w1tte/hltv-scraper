@@ -546,7 +546,7 @@ class HLTVClient:
         self.rate_limiter.recover()
         self._success_count += 1
         _t_done = time.monotonic()
-        logger.info(
+        logger.debug(
             "TIMING %s nav=%.2fs sel=%.2fs lock=%.2fs ext=%.2fs total=%.2fs (%d chars)",
             url.split("/")[-2] if "/mapstatsid/" in url else url.split("/")[-1],
             _t_nav - _t0, _t_sel_done - _t_sel,
