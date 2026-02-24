@@ -95,7 +95,7 @@ _JS_EXTRACTORS: dict[str, str] = {
     # Deduplicated: elements already inside a captured parent are skipped.
     "map_stats": """(function(){
         var s=['.match-info-box','.team-left','.team-right',
-               '.match-info-row','.stats-table.totalstats',
+               '.match-info-row','.stats-table',
                '.totalstats','.round-history-con'];
         var seen=new Set();
         var p=[];
@@ -447,21 +447,17 @@ class HLTVClient:
                 # haven't all rendered yet.  Retry targeted extraction
                 # with increasing waits before falling back to full page
                 # (which is 5-6 MB and takes 10-20s through CDP).
-                logger.info("Short extraction: %d chars (min %d) for %s — page_type=%s html_preview=%r",
-                            len(html), _min_size, url, page_type, html[:200] if html else "EMPTY")
-                for retry_wait in (0.3, 0.5, 1.0):
-                    logger.debug("Short extraction (%d chars) for %s — retry in %.1fs",
-                                 len(html), url, retry_wait)
-                    await asyncio.sleep(retry_wait)
-                    async with self._eval_lock:
-                        html = await tab.evaluate(extractor_js)
-                    if not isinstance(html, str):
-                        html = ""
-                    if len(html) >= _min_size:
-                        break
+                logger.debug("Short extraction: %d chars (min %d) for %s — page_type=%s",
+                             len(html), _min_size, url, page_type)
+                # Single retry after brief wait — with correct selectors in the
+                # extractor, this should rarely trigger.
+                await asyncio.sleep(0.5)
+                async with self._eval_lock:
+                    html = await tab.evaluate(extractor_js)
+                if not isinstance(html, str):
+                    html = ""
                 if len(html) < _min_size:
-                    # All retries failed — fall back to full page
-                    logger.info("Targeted extraction failed after retries for %s — full page fallback", url)
+                    logger.info("Targeted extraction failed for %s — full page fallback (%d chars)", url, len(html))
                     async with self._eval_lock:
                         html = await tab.evaluate("document.documentElement.outerHTML")
                     if not isinstance(html, str):
