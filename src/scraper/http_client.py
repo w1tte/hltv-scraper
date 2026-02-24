@@ -364,18 +364,11 @@ class HLTVClient:
         _t0 = time.monotonic()
 
         try:
-            # Navigate using tab.get() which does cdp.page.navigate + await self.
-            # We monkey-patch Tab.wait to reduce the hardcoded 0.5s post-nav
-            # sleep to 0.15s — enough for navigation to commit while being
-            # 3× faster. The ready_selector provides the real readiness gate.
-            _orig_sleep = tab.sleep
-            async def _fast_sleep(t=0.25):
-                return await _orig_sleep(0.25)
-            tab.sleep = _fast_sleep
-            try:
-                await tab.get(url)
-            finally:
-                tab.sleep = _orig_sleep
+            # Navigate using tab.get() — includes cdp.page.navigate + 0.5s sleep.
+            # The 0.5s sleep is needed for the DOM to fully render so targeted
+            # extraction works reliably.  Reducing it to 0.15-0.25s caused 24%+
+            # of fetches to fall back to full-page outerHTML (5-6MB, 10-65s).
+            await tab.get(url)
             _t_nav = time.monotonic()
 
             # Check for Cloudflare challenge via page title
@@ -426,10 +419,9 @@ class HLTVClient:
             if ready_selector:
                 await self._wait_for_selector(tab, url, ready_selector)
                 # Brief settle time for remaining DOM elements to render.
-                # SSR pages deliver .stats-table before .match-info-box;
-                # this pause lets the full DOM stabilize so targeted
-                # extraction finds all elements on the first try.
-                await asyncio.sleep(0.2)
+                # Brief settle after selector match — with 0.5s nav sleep,
+                # DOM is usually fully rendered by now.
+                await asyncio.sleep(0.05)
             _t_sel_done = time.monotonic()
 
             # Extract HTML — targeted for known page types, full page otherwise.
