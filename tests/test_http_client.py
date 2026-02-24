@@ -394,6 +394,7 @@ async def test_fetch_many_captures_errors(mock_start):
     async def switching_evaluate(js):
         nonlocal fetch_count
         if "document.title" in js:
+            fetch_count += 1  # count navigations by title checks
             # Return challenge on the 2nd fetch
             if fetch_count == 2:
                 return "Just a moment..."
@@ -403,16 +404,6 @@ async def test_fetch_many_captures_errors(mock_start):
         return ""
 
     client._tab.evaluate = AsyncMock(side_effect=switching_evaluate)
-
-    # Patch tab.get to track fetch count
-    original_get = client._tab.get
-
-    async def counting_get(url):
-        nonlocal fetch_count
-        fetch_count += 1
-        return await original_get(url)
-
-    client._tab.get = AsyncMock(side_effect=counting_get)
 
     urls = [
         "https://www.hltv.org/test1",

@@ -393,10 +393,13 @@ class HLTVClient:
         self._request_count += 1
 
         try:
-            await tab.get(url)
-            # When we have a ready_selector we'll poll the DOM for content,
-            # so a short initial sleep (just enough for title to load) is fine.
-            # Without a ready_selector, keep the full page_load_wait.
+            # Navigate via direct CDP — bypasses nodriver's tab.get() which
+            # adds a fixed 0.5s sleep.  With ready_selector we poll for the
+            # element instead, so the 0.5s is pure waste.
+            import nodriver.cdp.page as _cdp_page
+            await tab.send(_cdp_page.navigate(url))
+            # Minimal sleep: just enough for document.title to be queryable.
+            # ready_selector will poll for actual content readiness.
             initial_wait = 0.1 if ready_selector else self._config.page_load_wait
             await asyncio.sleep(initial_wait)
 
