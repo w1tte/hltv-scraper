@@ -477,6 +477,11 @@ class HLTVClient:
 
         except CloudflareChallenge:
             raise
+        except ValueError:
+            # Raised by _wait_for_selector when page is loaded but element
+            # genuinely missing (no data).  Don't wrap in HLTVFetchError —
+            # that would trigger tenacity retries on a permanent condition.
+            raise
         except Exception as exc:
             raise HLTVFetchError(
                 f"Failed to fetch {url}: {exc}", url=url

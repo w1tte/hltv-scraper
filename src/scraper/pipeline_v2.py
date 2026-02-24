@@ -197,6 +197,10 @@ async def _scrape_match(
             else:
                 map_html = await client.fetch(
                     map_url, page_type="map_stats", ready_selector=".stats-table")
+        except ValueError as exc:
+            # Page loaded but .stats-table not found — no stats data available
+            logger.warning("Map %d fetch: no data (%s)", mapstatsid, exc)
+            return False
         except Exception as exc:
             logger.error("Map %d fetch: %s", mapstatsid, exc)
             return False
