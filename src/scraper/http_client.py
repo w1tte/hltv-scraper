@@ -362,12 +362,15 @@ class HLTVClient:
         self._request_count += 1
 
         try:
-            # Navigate — nodriver's tab.get() adds a fixed 0.5s sleep after
-            # cdp.page.navigate.  We keep it for now because direct CDP
-            # navigation caused 69/100 maps to miss .match-info-box.
-            await tab.get(url)
-            # Short additional wait for title to be queryable.
-            initial_wait = 0.1 if ready_selector else self._config.page_load_wait
+            # Direct CDP navigation — skip nodriver's hardcoded 0.5s sleep.
+            # We rely on ready_selector guards (present on all page types)
+            # to detect when the DOM is usable.
+            import nodriver.cdp.page as cdp_page
+            await tab.send(cdp_page.navigate(url))
+            # Minimal wait for DOM to start rendering.  With ready_selector
+            # set, _wait_for_selector provides the real gate; without it we
+            # fall back to page_load_wait for safety.
+            initial_wait = 0.05 if ready_selector else self._config.page_load_wait
             await asyncio.sleep(initial_wait)
 
             # Check for Cloudflare challenge via page title

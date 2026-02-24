@@ -14,7 +14,7 @@ class ScraperConfig:
     """
 
     # Rate limiting: delay between requests
-    min_delay: float = 0.3
+    min_delay: float = 0.15
     max_delay: float = 3.0
 
     # Adaptive backoff on challenge/error
