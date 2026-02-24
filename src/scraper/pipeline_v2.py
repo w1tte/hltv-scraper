@@ -504,6 +504,17 @@ async def run_pipeline_v2(
             return
         client = await client_queue.get()
         try:
+            # Health check: restart browser if Chrome crashed
+            if not client.is_healthy:
+                try:
+                    await client.restart()
+                except Exception as restart_exc:
+                    logger.error("Browser restart failed for match %d: %s",
+                                 entry["match_id"], restart_exc)
+                    failed += 1
+                    results["overview"]["failed"] += 1
+                    return
+
             r = await _scrape_match(
                 match_id=entry["match_id"], url=entry["url"],
                 client=client, match_repo=match_repo,
@@ -526,6 +537,12 @@ async def run_pipeline_v2(
             failed += 1
             results["overview"]["failed"] += 1
             logger.error("Unexpected error on match %d: %s", entry["match_id"], exc)
+            # If the browser died during the match, try to restart it
+            if not client.is_healthy:
+                try:
+                    await client.restart()
+                except Exception:
+                    logger.error("Post-crash browser restart also failed")
         finally:
             client_queue.put_nowait(client)
 

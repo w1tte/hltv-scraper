@@ -180,6 +180,25 @@ class HLTVClient:
         """First tab, for backward compatibility."""
         return self._tabs[0] if self._tabs else None
 
+    @property
+    def is_healthy(self) -> bool:
+        """Check if the browser process is still alive."""
+        if self._browser is None:
+            return False
+        proc = getattr(self._browser, "_process", None)
+        return proc is not None and proc.returncode is None
+
+    async def restart(self) -> None:
+        """Close and re-start the browser (crash recovery).
+
+        Preserves the same config/proxy. The caller should retry
+        the failed match after calling this.
+        """
+        logger.warning("Restarting browser (crash recovery)...")
+        await self.close()
+        await self.start()
+        logger.info("Browser restarted successfully")
+
     async def start(self) -> None:
         """Launch Chrome off-screen and warm up Cloudflare trust.
 
