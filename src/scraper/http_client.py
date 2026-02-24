@@ -606,6 +606,13 @@ class HLTVClient:
         finally:
             self._tab_pool.put_nowait(tab)
 
+    @retry(
+        retry=retry_if_exception_type((CloudflareChallenge, HLTVFetchError)),
+        wait=wait_exponential_jitter(initial=3, max=30, jitter=2),
+        stop=stop_after_attempt(5),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True,
+    )
     async def fetch_with_tab(
         self, tab, url: str,
         content_marker: str | None = None,
@@ -617,6 +624,9 @@ class HLTVClient:
         Use inside a ``pinned_tab()`` context to keep the same tab for a
         series of sequential fetches — prevents other pipelines from
         interleaving on the same tab.
+
+        Has the same tenacity retry decorator as ``fetch()`` so transient
+        CDP errors and Cloudflare challenges are retried automatically.
         """
         return await self._fetch_with_tab(
             tab, url,
@@ -688,17 +698,28 @@ class HLTVClient:
 
         await asyncio.sleep(0.3)
 
-        # Kill any surviving Chrome / Xvfb children of this browser's PID
+        # Kill any surviving Chrome children of this browser's PID
         try:
-            import os, signal, psutil
-            pid = getattr(browser, "_process_pid", None)
+            import signal as _signal
+            import psutil
+            _proc = getattr(browser, "_process", None)
+            pid = _proc.pid if _proc is not None else None
             if pid:
-                for proc in psutil.process_iter(["pid", "ppid", "name"]):
+                try:
+                    parent = psutil.Process(pid)
+                    children = parent.children(recursive=True)
+                    for child in children:
+                        try:
+                            child.send_signal(_signal.SIGKILL)
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                    # Also kill the parent if still alive
                     try:
-                        if proc.info["ppid"] == pid or proc.info["pid"] == pid:
-                            proc.send_signal(signal.SIGKILL)
+                        parent.send_signal(_signal.SIGKILL)
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         pass
+                except psutil.NoSuchProcess:
+                    pass  # Already dead — good
         except ImportError:
             pass  # psutil optional — best-effort only
         except Exception:
@@ -726,6 +747,7 @@ class HLTVClient:
     def _patch_retry(self) -> None:
         """Patch tenacity stop condition to use config.max_retries."""
         self.fetch.retry.stop = stop_after_attempt(self._config.max_retries)
+        self.fetch_with_tab.retry.stop = stop_after_attempt(self._config.max_retries)
 
 
 async def fetch_distributed(

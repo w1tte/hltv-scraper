@@ -514,15 +514,22 @@ async def run_pipeline_v2(
                 logger.warning("[%d/%d] Match %d failed: %s",
                                done + failed, total, entry["match_id"], r["error"])
         except Exception as exc:
-            # Catch unexpected errors so one bad task doesn't kill the gather
             failed += 1
             results["overview"]["failed"] += 1
             logger.error("Unexpected error on match %d: %s", entry["match_id"], exc)
         finally:
             client_queue.put_nowait(client)
 
-    # return_exceptions=True: one task's failure won't cancel the others
-    await asyncio.gather(*[process_one(e) for e in pending], return_exceptions=True)
+    # Process matches in bounded-concurrency batches instead of spawning
+    # all N tasks at once.  With 25k matches, asyncio.gather(all) would
+    # create 25k live coroutines — each holding a stack frame and awaiting
+    # the client_queue.  Batching to 4× worker count keeps memory flat.
+    batch_size = len(clients) * 4
+    for batch_start in range(0, len(pending), batch_size):
+        if shutdown.is_set:
+            break
+        batch = pending[batch_start:batch_start + batch_size]
+        await asyncio.gather(*[process_one(e) for e in batch], return_exceptions=True)
 
     logger.info("Worker pool done: %d ok, %d failed, %.0fs elapsed",
                 done, failed, time.monotonic() - t0)
