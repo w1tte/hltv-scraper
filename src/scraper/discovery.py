@@ -121,7 +121,7 @@ async def run_discovery(
     }
 
     prev_page_count = config.results_per_page  # assume full until proven otherwise
-    for offset in range(config.start_offset, config.max_offset + 1, config.results_per_page):
+    for offset in range(config.start_offset, config.max_offset, config.results_per_page):
         # Check shutdown flag
         if shutdown is not None and shutdown.is_set:
             logger.info("Shutdown requested, stopping discovery at offset %d", offset)

@@ -49,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--end-offset",
         type=int,
         default=25000,
-        help="End offset for results pagination (default: 25000)",
+        help="End offset for results pagination, exclusive (default: 25000)",
     )
     parser.add_argument(
         "--full",
@@ -79,8 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--workers",
         type=int,
-        default=4,
-        help="Number of parallel browser workers for pipeline v2 (default: 4)",
+        default=8,
+        help="Number of parallel browser workers for pipeline v2 (default: 8)",
     )
     parser.add_argument(
         "--data-dir",
@@ -116,13 +116,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--concurrent-tabs",
         type=int,
         default=None,
-        help="Tabs per browser instance (default: 1)",
+        help="Tabs per browser instance (default: 2)",
     )
     parser.add_argument(
         "--page-load-wait",
         type=float,
         default=None,
-        help="Seconds to wait after navigation (default: 1.5)",
+        help="Seconds to wait after navigation (default: 0.4)",
     )
     parser.add_argument(
         "--min-delay",
@@ -135,6 +135,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Skip saving raw HTML to disk (faster, less disk usage; DB data is still written)",
+    )
+    parser.add_argument(
+        "--per-match-timeout",
+        type=float,
+        default=None,
+        help="Hard timeout per match in seconds (default: 300)",
     )
     return parser
 
@@ -205,6 +211,8 @@ async def async_main(args: argparse.Namespace) -> None:
         config_overrides["min_delay"] = args.min_delay
     if args.no_save_html:
         config_overrides["save_html"] = False
+    if args.per_match_timeout is not None:
+        config_overrides["per_match_timeout"] = args.per_match_timeout
     config = ScraperConfig(**config_overrides)
 
     mode = "full" if args.full else "incremental"
@@ -270,7 +278,7 @@ async def async_main(args: argparse.Namespace) -> None:
                     f" via {proxy}" if proxy else "",
                 )
                 if i < count - 1:
-                    await asyncio.sleep(1.0)
+                    await asyncio.sleep(0.3)
             return pool
 
         if use_v2:
@@ -298,7 +306,7 @@ async def async_main(args: argparse.Namespace) -> None:
                         f" via {proxy}" if proxy else "",
                     )
                     if i < args.workers - 1:
-                        await asyncio.sleep(1.0)
+                        await asyncio.sleep(0.3)
                 return pool
 
             # Run discovery on first browser while warming up the rest

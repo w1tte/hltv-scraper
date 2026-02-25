@@ -14,24 +14,26 @@ class ScraperConfig:
     """
 
     # Rate limiting: delay between requests
-    min_delay: float = 0.15
+    min_delay: float = 0.08
     max_delay: float = 3.0
 
     # Adaptive backoff on challenge/error
     backoff_factor: float = 2.0
 
     # Gradual recovery on success (multiply current delay by this)
-    recovery_factor: float = 0.95
+    # 0.85 recovers ~3× faster than 0.95 after a backoff spike
+    recovery_factor: float = 0.85
 
     # Maximum delay ceiling (seconds)
-    max_backoff: float = 120.0
+    max_backoff: float = 30.0
 
     # tenacity stop_after_attempt
     max_retries: int = 5
 
-    # Seconds to wait after navigation for page to load
-    # Content marker checks catch under-loaded pages, so 0.75s is safe.
-    page_load_wait: float = 0.75
+    # Seconds to wait after navigation for page to load (fallback retries).
+    # Ready-selector polling is the real gate; this is only used for
+    # content-marker misses and short-extraction retries.
+    page_load_wait: float = 0.4
 
     # Save raw HTML to disk for debugging/resumability.
     # Set to False for large production runs to avoid 250k+ gzip files and
@@ -39,10 +41,18 @@ class ScraperConfig:
     save_html: bool = True
 
     # Number of browser tabs per instance.
-    # Targeted DOM extraction (page_type param) cuts each fetch payload from
-    # 5–12 MB to ~50–100 KB, making concurrent tab use safe: even if a retry
-    # is needed due to a CDP routing blip, it costs ~0.1 s not ~5 s.
-    concurrent_tabs: int = 3
+    # With 8 workers × 2 tabs = 16 concurrent fetches, which maximises
+    # throughput while keeping nav_lock contention low within each browser.
+    concurrent_tabs: int = 2
+
+    # CDP navigation timeout (asyncio.wait_for around tab.get())
+    navigation_timeout: float = 30.0
+
+    # CDP evaluate timeout (asyncio.wait_for around tab.evaluate())
+    evaluate_timeout: float = 15.0
+
+    # Hard ceiling per match — defense-in-depth (5 minutes)
+    per_match_timeout: float = 300.0
 
     # Seconds to poll for Cloudflare challenge to clear during fetches
     challenge_wait: float = 90.0
@@ -56,7 +66,7 @@ class ScraperConfig:
 
     # Discovery pagination
     game_type: str = "CS2"           # Game filter: CS2, CSGO, or CS16
-    max_offset: int = 25000          # Last offset to paginate to (inclusive)
+    max_offset: int = 25000          # Last offset to paginate to (exclusive)
     results_per_page: int = 100      # Entries per results page (HLTV constant)
 
     # Match overview batch size

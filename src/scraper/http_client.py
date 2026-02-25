@@ -167,11 +167,11 @@ class HLTVClient:
         self._browser: nodriver.Browser | None = None
         self._tabs: list = []
         self._tab_pool: asyncio.Queue | None = None
-        # Serialise HTML extraction evaluate() calls across tabs.
-        # Prevents CDP response routing confusion on the shared WebSocket
-        # when multiple tabs evaluate JS simultaneously. Only used for the
-        # extraction step (~10-50ms hold time), NOT for selector polling.
-        self._eval_lock: asyncio.Lock = asyncio.Lock()
+        # Serialise CDP Page.navigate calls across tabs (~50-200ms hold).
+        # Prevents CDP response-routing confusion on the shared WebSocket
+        # when two tabs send navigation requests within milliseconds.
+        # With a single tab, no lock is needed (use a no-op context manager).
+        self._nav_lock: asyncio.Lock | None = None  # set in start() based on tab count
 
         # Request counters
         self._request_count = 0
@@ -202,7 +202,7 @@ class HLTVClient:
         """
         logger.warning("Restarting browser (crash recovery)...")
         await self.close()
-        self._eval_lock = asyncio.Lock()  # fresh lock for new browser
+        self._nav_lock = None  # set in start() based on tab count
         await self.start()
         logger.info("Browser restarted successfully")
 
@@ -249,12 +249,12 @@ class HLTVClient:
 
         elapsed = 0.0
         while elapsed < _WARMUP_TIMEOUT:
-            title = await first_tab.evaluate("document.title")
+            title = await self._safe_evaluate(first_tab, "document.title")
             if not isinstance(title, str):
                 title = ""
             # Detect Chrome network error pages (ERR_NO_SUPPORTED_PROXIES, etc.)
-            html_snippet = await first_tab.evaluate(
-                "document.documentElement.outerHTML.slice(0, 4000)"
+            html_snippet = await self._safe_evaluate(
+                first_tab, "document.documentElement.outerHTML.slice(0, 4000)"
             )
             if not isinstance(html_snippet, str):
                 html_snippet = ""
@@ -280,7 +280,7 @@ class HLTVClient:
                     elapsed + self._config.page_load_wait,
                 )
                 # Let CF cookies settle before real fetches begin
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(0.5)
                 break
             # Click the Turnstile "Verify you are human" checkbox via CDP mouse
             # events. The widget is inside a cross-origin iframe so JS can't
@@ -318,21 +318,38 @@ class HLTVClient:
 
         # Build the tab pool
         num_tabs = self._config.concurrent_tabs
+        # Nav lock only needed with multiple tabs sharing one WebSocket
+        self._nav_lock = asyncio.Lock() if num_tabs > 1 else None
         self._tabs = [first_tab]
         self._tab_pool = asyncio.Queue()
         self._tab_pool.put_nowait(first_tab)
         self._tab_rate_limiters[id(first_tab)] = RateLimiter(self._config)
 
-        # Additional tabs share the browser's cookie jar (CF clearance)
+        # Additional tabs share the browser's cookie jar (CF clearance).
+        # Minimal sleep — tabs inherit CF cookies, no challenge to clear.
         for i in range(1, num_tabs):
             tab = await self._browser.get(warmup_url)
-            await asyncio.sleep(self._config.page_load_wait)
+            await asyncio.sleep(0.2)
             self._tabs.append(tab)
             self._tab_pool.put_nowait(tab)
             self._tab_rate_limiters[id(tab)] = RateLimiter(self._config)
 
         if num_tabs > 1:
             logger.info("Browser ready with %d tabs (per-tab rate limiters)", num_tabs)
+
+    async def _safe_evaluate(self, tab, js: str, timeout: float | None = None):
+        """Wrap tab.evaluate() with asyncio.wait_for to prevent indefinite hangs.
+
+        If CDP drops a response, this times out instead of waiting forever.
+        """
+        if timeout is None:
+            timeout = self._config.evaluate_timeout
+        try:
+            return await asyncio.wait_for(tab.evaluate(js), timeout=timeout)
+        except asyncio.TimeoutError:
+            raise HLTVFetchError(
+                f"CDP evaluate timed out after {timeout}s", url=""
+            )
 
     async def _fetch_with_tab(
         self, tab, url: str,
@@ -364,21 +381,33 @@ class HLTVClient:
         _t0 = time.monotonic()
 
         try:
-            # Navigate using tab.get() with reduced post-nav sleep.
-            # The .stats-table extractor now matches reliably even at 0.25s,
-            # since the fallback issue was caused by missing selector (.totalstats)
-            # not by insufficient load time.
+            # Navigate with minimal post-nav sleep — ready_selector polling
+            # is the real gate for page readiness, not a fixed sleep.
             _orig_sleep = tab.sleep
-            tab.sleep = lambda t=0.25: _orig_sleep(0.25)
+            tab.sleep = lambda t=0.1: _orig_sleep(0.1)
             try:
-                await tab.get(url)
+                # Nav lock serialises CDP Page.navigate across tabs (multi-tab only)
+                nav_coro = asyncio.wait_for(
+                    tab.get(url),
+                    timeout=self._config.navigation_timeout,
+                )
+                if self._nav_lock is not None:
+                    async with self._nav_lock:
+                        await nav_coro
+                else:
+                    await nav_coro
+            except asyncio.TimeoutError:
+                raise HLTVFetchError(
+                    f"Navigation timed out after {self._config.navigation_timeout}s for {url}",
+                    url=url,
+                )
             finally:
                 tab.sleep = _orig_sleep
             _t_nav = time.monotonic()
 
             # Check for Cloudflare challenge via page title
             # nodriver may return ExceptionDetails instead of str on error
-            title = await tab.evaluate("document.title")
+            title = await self._safe_evaluate(tab, "document.title")
             if not isinstance(title, str):
                 title = ""
 
@@ -403,7 +432,7 @@ class HLTVClient:
                         pass
                     await asyncio.sleep(_POLL_INTERVAL)
                     elapsed += _POLL_INTERVAL
-                    title = await tab.evaluate("document.title")
+                    title = await self._safe_evaluate(tab, "document.title")
                     if not isinstance(title, str):
                         title = ""
                     if not any(sig in title for sig in _CHALLENGE_TITLES):
@@ -423,26 +452,21 @@ class HLTVClient:
             _t_sel = time.monotonic()
             if ready_selector:
                 await self._wait_for_selector(tab, url, ready_selector)
-                # Brief settle time for remaining DOM elements to render.
-                # Brief settle after selector match — with 0.5s nav sleep,
-                # DOM is usually fully rendered by now.
-                await asyncio.sleep(0.05)
+                # Minimal settle — selector match means DOM is ready
+                await asyncio.sleep(0.02)
             _t_sel_done = time.monotonic()
 
             # Extract HTML — targeted for known page types, full page otherwise.
             # Targeted extraction cuts CDP transfer from ~5 MB to ~50–100 KB.
-            # No eval_lock needed: pinned-tab architecture guarantees each tab
-            # has only one CDP operation in flight. The lock was causing 10-45s
-            # contention when one tab transferred a large page.
             extractor_js = _JS_EXTRACTORS.get(page_type or "")
             _min_size = 200 if extractor_js else 10000
 
             _t_ext = time.monotonic()
             _t_lock = _t_ext  # no lock wait
             if extractor_js:
-                html = await tab.evaluate(extractor_js)
+                html = await self._safe_evaluate(tab, extractor_js)
             else:
-                html = await tab.evaluate("document.documentElement.outerHTML")
+                html = await self._safe_evaluate(tab, "document.documentElement.outerHTML")
             _t_ext_done = time.monotonic()
             if not isinstance(html, str):
                 html = ""
@@ -450,19 +474,19 @@ class HLTVClient:
             if len(html) < _min_size and extractor_js:
                 # Targeted extraction returned too little — retry once
                 logger.debug("Short extraction: %d chars for %s", len(html), url)
-                await asyncio.sleep(0.5)
-                html = await tab.evaluate(extractor_js)
+                await asyncio.sleep(0.25)
+                html = await self._safe_evaluate(tab, extractor_js)
                 if not isinstance(html, str):
                     html = ""
                 if len(html) < _min_size:
                     logger.info("Targeted extraction failed for %s — full page fallback (%d chars)", url, len(html))
-                    html = await tab.evaluate("document.documentElement.outerHTML")
+                    html = await self._safe_evaluate(tab, "document.documentElement.outerHTML")
                     if not isinstance(html, str):
                         html = ""
                     _min_size = 10000
             elif len(html) < _min_size:
                 await asyncio.sleep(self._config.page_load_wait)
-                html = await tab.evaluate("document.documentElement.outerHTML")
+                html = await self._safe_evaluate(tab, "document.documentElement.outerHTML")
                 if not isinstance(html, str):
                     html = ""
 
@@ -502,18 +526,18 @@ class HLTVClient:
                 )
                 await asyncio.sleep(self._config.page_load_wait)
                 if extractor_js:
-                    html = await tab.evaluate(extractor_js)
+                    html = await self._safe_evaluate(tab, extractor_js)
                 else:
-                    html = await tab.evaluate("document.documentElement.outerHTML")
+                    html = await self._safe_evaluate(tab, "document.documentElement.outerHTML")
                 if not isinstance(html, str):
                     html = ""
 
                 if content_marker not in html:
                     await asyncio.sleep(self._config.page_load_wait * 2)
                     if extractor_js:
-                        html = await tab.evaluate(extractor_js)
+                        html = await self._safe_evaluate(tab, extractor_js)
                     else:
-                        html = await tab.evaluate("document.documentElement.outerHTML")
+                        html = await self._safe_evaluate(tab, "document.documentElement.outerHTML")
                     if not isinstance(html, str):
                         html = ""
 
@@ -559,28 +583,28 @@ class HLTVClient:
         """
         js = f"!!document.querySelector({selector!r})"
         elapsed = 0.0
-        # Start polling very fast — SSR pages usually have content by 50-100ms.
+        # Start polling very fast — SSR pages usually have content by 30-80ms.
         # Back off after a few misses to avoid hammering CDP.
-        interval = 0.05
+        interval = 0.03
         polls = 0
         while elapsed < timeout:
-            found = await tab.evaluate(js)
+            found = await self._safe_evaluate(tab, js)
             if found is True:
                 return
             await asyncio.sleep(interval)
             elapsed += interval
             polls += 1
-            if polls >= 2:  # after 100ms, slow to 0.2s
-                interval = 0.2
-            if polls >= 5:  # after 700ms, slow to 0.5s
-                interval = 0.5
+            if polls >= 3:  # after ~90ms, slow to 0.15s
+                interval = 0.15
+            if polls >= 6:  # after ~540ms, slow to 0.4s
+                interval = 0.4
         # Selector not found — check if page actually finished loading.
         # If document.readyState is 'complete', the page is loaded but the
         # expected element simply isn't there (no data).  Raise ValueError
         # so tenacity does NOT retry and the pipeline logs it as a warning.
         # If the page is still loading, raise HLTVFetchError to trigger retry.
         try:
-            ready = await tab.evaluate("document.readyState === 'complete'")
+            ready = await self._safe_evaluate(tab, "document.readyState === 'complete'")
         except Exception:
             ready = False
         if ready is True:

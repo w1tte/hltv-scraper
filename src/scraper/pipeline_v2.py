@@ -154,13 +154,18 @@ async def _scrape_match(
     if maps_q or vetoes_q:
         logger.warning("Match %d: quarantined %d maps, %d vetoes", match_id, maps_q, vetoes_q)
 
-    match_repo.upsert_match_overview(
-        match_data=match_data,
-        maps_data=validated_maps,
-        vetoes_data=validated_vetoes,
-    )
-    discovery_repo.update_status(match_id, "scraped")
-    logger.info("Parsed and persisted match %d (%s)", match_id, source_url)
+    try:
+        match_repo.upsert_match_overview(
+            match_data=match_data,
+            maps_data=validated_maps,
+            vetoes_data=validated_vetoes,
+        )
+    except Exception as exc:
+        logger.error("Match %d upsert failed: %s", match_id, exc)
+        discovery_repo.update_status(match_id, "failed")
+        result["error"] = f"upsert: {exc}"
+        return result
+    logger.debug("Overview persisted for match %d (%s)", match_id, source_url)
 
     # ------------------------------------------------------------------ #
     # Stages B + C: parallel per-map fetching
@@ -399,13 +404,10 @@ async def _scrape_match(
     async def scrape_map_pipeline(i: int, m) -> bool:
         """Run B→C for one map on a single pinned tab.
 
-        Stagger map starts by 0.1 s to avoid all tabs navigating at the
-        exact same instant.  Within each map, the same tab is pinned for
-        stats → perf → econ: only ONE CDP operation is ever in flight on
-        that tab at any time, eliminating 'navigated or closed' errors.
+        Minimal stagger (20ms) — nav_lock handles serialisation.
         """
         if i > 0:
-            await asyncio.sleep(i * 0.05)
+            await asyncio.sleep(i * 0.02)
         async with client.pinned_tab() as tab:
             b_ok = await fetch_map_stats_one(m, tab)
             if not b_ok:
@@ -487,6 +489,12 @@ async def run_pipeline_v2(
     # ------------------------------------------------------------------ #
     # Phase 2: Worker pool — each client processes one match end-to-end
     # ------------------------------------------------------------------ #
+    # Log queue summary so the user sees resume progress
+    qs = discovery_repo.get_queue_summary()
+    if qs["scraped"] or qs["failed"]:
+        logger.info("Resuming: %d pending, %d scraped, %d failed (%d total)",
+                     qs["pending"], qs["scraped"], qs["failed"], qs["total"])
+
     # Always fetch all pending — do NOT limit by matches_found (which is 0 on
     # incremental resume when discovery skips already-seen pages).
     pending = discovery_repo.get_pending_matches(limit=50000)
@@ -498,16 +506,17 @@ async def run_pipeline_v2(
     for c in clients:
         client_queue.put_nowait(c)
 
-    done = 0
-    failed = 0
+    counters = {"done": 0, "failed": 0}
     t0 = time.monotonic()
 
     async def process_one(entry: dict) -> None:
-        nonlocal done, failed
         if shutdown.is_set:
             return
         client = await client_queue.get()
         try:
+            if shutdown.is_set:
+                return  # Don't start new matches after shutdown
+
             # Health check: restart browser if Chrome crashed
             if not client.is_healthy:
                 try:
@@ -515,30 +524,46 @@ async def run_pipeline_v2(
                 except Exception as restart_exc:
                     logger.error("Browser restart failed for match %d: %s",
                                  entry["match_id"], restart_exc)
-                    failed += 1
+                    counters["failed"] += 1
                     results["overview"]["failed"] += 1
                     return
 
-            r = await _scrape_match(
-                match_id=entry["match_id"], url=entry["url"],
-                client=client, match_repo=match_repo,
-                discovery_repo=discovery_repo, storage=storage,
-                config=config,
-            )
+            # Per-match timeout: defense-in-depth against hung matches
+            try:
+                r = await asyncio.wait_for(
+                    _scrape_match(
+                        match_id=entry["match_id"], url=entry["url"],
+                        client=client, match_repo=match_repo,
+                        discovery_repo=discovery_repo, storage=storage,
+                        config=config,
+                    ),
+                    timeout=config.per_match_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.error("Match %d timed out after %.0fs",
+                             entry["match_id"], config.per_match_timeout)
+                discovery_repo.update_status(entry["match_id"], "failed")
+                counters["failed"] += 1
+                results["overview"]["failed"] += 1
+                return
+
             if r["ok"]:
-                done += 1
+                discovery_repo.update_status(entry["match_id"], "scraped")
+                counters["done"] += 1
                 results["overview"]["parsed"]     += 1
                 results["map_stats"]["parsed"]    += r["maps_done"]
                 results["perf_economy"]["parsed"] += r["maps_done"]
                 logger.info("[%d/%d] Match %d complete (%d maps)",
-                            done + failed, total, entry["match_id"], r["maps_done"])
+                            counters["done"] + counters["failed"], total,
+                            entry["match_id"], r["maps_done"])
             else:
-                failed += 1
+                counters["failed"] += 1
                 results["overview"]["failed"] += 1
                 logger.warning("[%d/%d] Match %d failed: %s",
-                               done + failed, total, entry["match_id"], r["error"])
+                               counters["done"] + counters["failed"], total,
+                               entry["match_id"], r["error"])
         except Exception as exc:
-            failed += 1
+            counters["failed"] += 1
             results["overview"]["failed"] += 1
             logger.error("Unexpected error on match %d: %s", entry["match_id"], exc)
             # If the browser died during the match, try to restart it
@@ -553,8 +578,9 @@ async def run_pipeline_v2(
     # Process matches in bounded-concurrency batches instead of spawning
     # all N tasks at once.  With 25k matches, asyncio.gather(all) would
     # create 25k live coroutines — each holding a stack frame and awaiting
-    # the client_queue.  Batching to 4× worker count keeps memory flat.
-    batch_size = len(clients) * 4
+    # the client_queue.  Batching to 8× worker count keeps memory flat
+    # while ensuring workers always have queued work ready.
+    batch_size = len(clients) * 8
     for batch_start in range(0, len(pending), batch_size):
         if shutdown.is_set:
             break
@@ -562,5 +588,5 @@ async def run_pipeline_v2(
         await asyncio.gather(*[process_one(e) for e in batch], return_exceptions=True)
 
     logger.info("Worker pool done: %d ok, %d failed, %.0fs elapsed",
-                done, failed, time.monotonic() - t0)
+                counters["done"], counters["failed"], time.monotonic() - t0)
     return results

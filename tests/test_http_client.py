@@ -27,6 +27,9 @@ def _make_config(**overrides) -> ScraperConfig:
         "page_load_wait": 0.0,
         "challenge_wait": 0.0,
         "concurrent_tabs": 1,
+        "navigation_timeout": 5.0,
+        "evaluate_timeout": 5.0,
+        "per_match_timeout": 60.0,
     }
     defaults.update(overrides)
     return ScraperConfig(**defaults)

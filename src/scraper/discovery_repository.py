@@ -153,6 +153,17 @@ class DiscoveryRepository:
     # Count / read methods
     # ------------------------------------------------------------------
 
+    def get_queue_summary(self) -> dict:
+        """Return counts by status: {pending, scraped, failed, total}."""
+        rows = self.conn.execute(
+            "SELECT status, COUNT(*) FROM scrape_queue GROUP BY status"
+        ).fetchall()
+        summary = {"pending": 0, "scraped": 0, "failed": 0}
+        for status, count in rows:
+            summary[status] = count
+        summary["total"] = sum(summary.values())
+        return summary
+
     def count_pending(self) -> int:
         """Return the number of matches with status 'pending'."""
         return self.conn.execute(
