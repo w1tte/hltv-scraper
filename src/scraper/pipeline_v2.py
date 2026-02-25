@@ -507,20 +507,23 @@ async def run_pipeline_v2(
         client_queue.put_nowait(c)
 
     counters = {"done": 0, "failed": 0}
+    # Per-client consecutive timeout tracker for circuit-breaker restarts
+    client_timeouts: dict[int, int] = {id(c): 0 for c in clients}
+    _TIMEOUT_RESTART_THRESHOLD = 3
     t0 = time.monotonic()
 
     async def process_one(entry: dict) -> None:
-        if shutdown.is_set:
-            return
+        # Acquire client FIRST to prevent queue leaks on early-return paths.
         client = await client_queue.get()
         try:
             if shutdown.is_set:
-                return  # Don't start new matches after shutdown
+                return
 
-            # Health check: restart browser if Chrome crashed
+            # Health check: restart browser if Chrome crashed or unresponsive
             if not client.is_healthy:
                 try:
                     await client.restart()
+                    client_timeouts[id(client)] = 0
                 except Exception as restart_exc:
                     logger.error("Browser restart failed for match %d: %s",
                                  entry["match_id"], restart_exc)
@@ -545,7 +548,22 @@ async def run_pipeline_v2(
                 discovery_repo.update_status(entry["match_id"], "failed")
                 counters["failed"] += 1
                 results["overview"]["failed"] += 1
+                # Circuit breaker: restart browser after consecutive timeouts
+                client_timeouts[id(client)] = client_timeouts.get(id(client), 0) + 1
+                if client_timeouts[id(client)] >= _TIMEOUT_RESTART_THRESHOLD:
+                    logger.warning(
+                        "Client %d hit %d consecutive timeouts — restarting browser",
+                        id(client), client_timeouts[id(client)],
+                    )
+                    try:
+                        await client.restart()
+                        client_timeouts[id(client)] = 0
+                    except Exception:
+                        logger.error("Circuit-breaker restart failed")
                 return
+
+            # Success — reset timeout counter for this client
+            client_timeouts[id(client)] = 0
 
             if r["ok"]:
                 discovery_repo.update_status(entry["match_id"], "scraped")
@@ -570,6 +588,7 @@ async def run_pipeline_v2(
             if not client.is_healthy:
                 try:
                     await client.restart()
+                    client_timeouts[id(client)] = 0
                 except Exception:
                     logger.error("Post-crash browser restart also failed")
         finally:
@@ -586,6 +605,14 @@ async def run_pipeline_v2(
             break
         batch = pending[batch_start:batch_start + batch_size]
         await asyncio.gather(*[process_one(e) for e in batch], return_exceptions=True)
+        # Circuit breaker: warn on high batch failure rate
+        total_processed = counters["done"] + counters["failed"]
+        if total_processed > 0 and counters["failed"] / total_processed > 0.5:
+            logger.warning(
+                "High failure rate: %d/%d (%.0f%%) — possible systemic issue",
+                counters["failed"], total_processed,
+                100 * counters["failed"] / total_processed,
+            )
 
     logger.info("Worker pool done: %d ok, %d failed, %.0fs elapsed",
                 counters["done"], counters["failed"], time.monotonic() - t0)

@@ -43,6 +43,16 @@ def parse_results_page(html: str) -> list[DiscoveredMatch]:
     soup = BeautifulSoup(html, "lxml")
     entries = soup.select(".result-con[data-zonedgrouping-entry-unix]")
 
+    if not entries:
+        # Fallback: try without the data- attribute in case HLTV changed DOM
+        entries = soup.select(".result-con")
+        if entries:
+            logger.warning(
+                "Primary selector matched 0 entries, fallback .result-con found %d. "
+                "HLTV may have changed page structure.",
+                len(entries),
+            )
+
     results: list[DiscoveredMatch] = []
     for entry in entries:
         # Match URL and ID
@@ -64,8 +74,9 @@ def parse_results_page(html: str) -> list[DiscoveredMatch]:
         map_text = map_text_el.text.strip() if map_text_el else ""
         is_forfeit = map_text == "def"
 
-        # Timestamp
-        timestamp_ms = int(entry["data-zonedgrouping-entry-unix"])
+        # Timestamp (may be absent if using fallback selector)
+        raw_ts = entry.get("data-zonedgrouping-entry-unix")
+        timestamp_ms = int(raw_ts) if raw_ts else 0
 
         results.append(
             DiscoveredMatch(
@@ -133,10 +144,19 @@ async def run_discovery(
             continue
 
         try:
-            # 1. Fetch — rotate across all clients for resilience
+            # 1. Fetch — rotate across all clients, skipping unhealthy ones
             url = f"{config.base_url}/results?offset={offset}&gameType={config.game_type}"
-            client_index = (stats["pages_fetched"] + stats["errors"]) % len(clients)
-            html = await clients[client_index].fetch(
+            base_index = (stats["pages_fetched"] + stats["errors"]) % len(clients)
+            client = None
+            for attempt in range(len(clients)):
+                candidate = clients[(base_index + attempt) % len(clients)]
+                if candidate.is_healthy:
+                    client = candidate
+                    break
+            if client is None:
+                logger.error("All %d clients unhealthy at offset %d", len(clients), offset)
+                raise RuntimeError("All browser clients are unhealthy")
+            html = await client.fetch(
                 url,
                 ready_selector=".result-con",  # wait for JS-rendered match list
             )

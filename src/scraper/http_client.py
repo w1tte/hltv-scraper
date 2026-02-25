@@ -178,6 +178,9 @@ class HLTVClient:
         self._success_count = 0
         self._challenge_count = 0
 
+        # Track last successful CDP evaluate for unresponsiveness detection
+        self._last_eval_ok: float = time.monotonic()
+
         # Override tenacity stop condition with config value
         self._patch_retry()
 
@@ -188,11 +191,21 @@ class HLTVClient:
 
     @property
     def is_healthy(self) -> bool:
-        """Check if the browser process is still alive."""
+        """Check if the browser process is still alive and responsive.
+
+        Returns False if the Chrome process exited OR if no CDP evaluate
+        has succeeded within 2× evaluate_timeout (zombie process detection).
+        """
         if self._browser is None:
             return False
         proc = getattr(self._browser, "_process", None)
-        return proc is not None and proc.returncode is None
+        if proc is None or proc.returncode is not None:
+            return False
+        stale = time.monotonic() - self._last_eval_ok
+        if stale > self._config.evaluate_timeout * 2:
+            logger.warning("Browser unresponsive: no eval success in %.0fs", stale)
+            return False
+        return True
 
     async def restart(self) -> None:
         """Close and re-start the browser (crash recovery).
@@ -203,6 +216,7 @@ class HLTVClient:
         logger.warning("Restarting browser (crash recovery)...")
         await self.close()
         self._nav_lock = None  # set in start() based on tab count
+        self._last_eval_ok = time.monotonic()  # reset staleness timer
         await self.start()
         logger.info("Browser restarted successfully")
 
@@ -299,9 +313,15 @@ class HLTVClient:
                     button=MouseButton.LEFT, click_count=1,
                 ))
                 logger.debug("Clicked Turnstile checkbox at (216,337), waiting for verification...")
+                _click_failures = 0
                 await asyncio.sleep(3.0)
-            except Exception:
-                pass
+            except Exception as click_exc:
+                _click_failures = getattr(self, "_warmup_click_failures", 0) + 1
+                self._warmup_click_failures = _click_failures
+                logger.debug("Turnstile click failed (%d): %s", _click_failures, click_exc)
+                if _click_failures >= 5:
+                    logger.warning("Turnstile click failed %d times — CDP may be broken", _click_failures)
+                    break
             await asyncio.sleep(_POLL_INTERVAL)
             elapsed += _POLL_INTERVAL
         else:
@@ -341,11 +361,14 @@ class HLTVClient:
         """Wrap tab.evaluate() with asyncio.wait_for to prevent indefinite hangs.
 
         If CDP drops a response, this times out instead of waiting forever.
+        Records last successful eval time for unresponsiveness detection.
         """
         if timeout is None:
             timeout = self._config.evaluate_timeout
         try:
-            return await asyncio.wait_for(tab.evaluate(js), timeout=timeout)
+            result = await asyncio.wait_for(tab.evaluate(js), timeout=timeout)
+            self._last_eval_ok = time.monotonic()
+            return result
         except asyncio.TimeoutError:
             raise HLTVFetchError(
                 f"CDP evaluate timed out after {timeout}s", url=""
@@ -428,8 +451,8 @@ class HLTVClient:
                             "mouseReleased", x=216, y=337,
                             button=MouseButton.LEFT, click_count=1,
                         ))
-                    except Exception:
-                        pass
+                    except Exception as click_exc:
+                        logger.debug("Turnstile click failed during challenge: %s", click_exc)
                     await asyncio.sleep(_POLL_INTERVAL)
                     elapsed += _POLL_INTERVAL
                     title = await self._safe_evaluate(tab, "document.title")
