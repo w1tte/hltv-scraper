@@ -52,7 +52,7 @@ class ScraperConfig:
     evaluate_timeout: float = 15.0
 
     # Hard ceiling per match — defense-in-depth (2 minutes)
-    per_match_timeout: float = 120.0
+    per_match_timeout: float = 180.0
 
     # Seconds to poll for Cloudflare challenge to clear during fetches
     challenge_wait: float = 90.0

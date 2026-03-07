@@ -34,7 +34,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./proxies.txt:/app/proxies.txt:ro
-    command: ["sh", "-c", "Xvfb :99 -screen 0 1280x900x24 -nolisten tcp & sleep 1 && exec hltv-scraper --proxy-file proxies.txt --workers 4 --concurrent-tabs 1 --no-save-html --skip-discovery"]
+    command: ["sh", "-c", "Xvfb :99 -screen 0 1280x900x24 -nolisten tcp & sleep 1 && exec hltv-scraper --proxy-file proxies.txt --workers 2 --concurrent-tabs 1 --no-save-html --skip-discovery"]
 
 volumes:
   hltv_pgdata:
