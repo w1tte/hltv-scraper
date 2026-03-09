@@ -368,7 +368,7 @@ class HLTVClient:
             "--window-size=1280,900",
             # Anti-detection: remove navigator.webdriver and automation signals
             "--disable-blink-features=AutomationControlled",
-            "--disable-features=IsolateOrigins",
+            "--disable-features=IsolateOrigins,TranslateUI",
             # Realistic browser environment
             "--lang=en-US,en",
             "--no-first-run",
@@ -383,6 +383,14 @@ class HLTVClient:
             "--use-gl=swiftshader",
             "--enable-gpu-rasterization",
             "--ignore-gpu-blocklist",
+            # --- Memory reduction flags (US-005) ---
+            "--disable-extensions",
+            "--disable-background-networking",
+            "--disable-default-apps",
+            "--disable-sync",
+            "--disable-component-update",
+            "--disable-domain-reliability",
+            "--disable-hang-monitor",
         ]
         if self._proxy_url:
             if self._proxy_user:
@@ -517,6 +525,29 @@ class HLTVClient:
 
         if num_tabs > 1:
             logger.info("Browser ready with %d tabs (per-tab rate limiters)", num_tabs)
+
+        # Log browser RSS memory on startup (US-005)
+        self._log_browser_memory()
+
+    def _log_browser_memory(self) -> None:
+        """Log RSS memory of the browser process tree (best-effort)."""
+        try:
+            import psutil
+            _proc = getattr(self._browser, "_process", None)
+            pid = _proc.pid if _proc is not None else None
+            if not pid:
+                return
+            parent = psutil.Process(pid)
+            total_rss = parent.memory_info().rss
+            for child in parent.children(recursive=True):
+                try:
+                    total_rss += child.memory_info().rss
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            rss_mb = total_rss / (1024 * 1024)
+            logger.info("Browser RSS memory: %.1f MB (pid=%d)", rss_mb, pid)
+        except (ImportError, Exception):
+            pass  # psutil optional — best-effort only
 
     async def _dismiss_consent(self, tab) -> bool:
         """Click Cookiebot 'Allow All' if the consent dialog is visible.
