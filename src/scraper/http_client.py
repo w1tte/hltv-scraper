@@ -42,6 +42,7 @@ from scraper.exceptions import (
     HLTVFetchError,
     PageNotFound,
 )
+from scraper.proxy_health import ProxyHealthTracker
 from scraper.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
@@ -173,6 +174,8 @@ class HLTVClient:
         self._proxy_urls = proxy_urls or ([proxy_url] if proxy_url else [])
         self._proxy_index = 0
         self._apply_proxy(self._proxy_urls[0] if self._proxy_urls else None)
+        # Health-based proxy selection (replaces blind round-robin)
+        self._proxy_health = ProxyHealthTracker(self._proxy_urls) if self._proxy_urls else None
         self.rate_limiter = RateLimiter(config)  # kept for global backoff/stats
         self._tab_rate_limiters: dict[int, RateLimiter] = {}  # per-tab, keyed by id(tab)
         self._browser: nodriver.Browser | None = None
@@ -225,9 +228,24 @@ class HLTVClient:
         self._proxy_url, self._proxy_user, self._proxy_pass = self._parse_proxy(proxy_url)
 
     def _rotate_proxy(self) -> None:
-        """Advance to the next proxy in the list (round-robin)."""
+        """Select the best proxy based on health scoring.
+
+        Uses ProxyHealthTracker to pick the proxy with the lowest
+        average latency among non-blacklisted candidates, falling
+        back to round-robin if no health tracker is available.
+        """
         if not self._proxy_urls:
             return
+        if self._proxy_health:
+            best = self._proxy_health.select_best_proxy(self._proxy_url)
+            if best and best in self._proxy_urls:
+                self._proxy_index = self._proxy_urls.index(best)
+                self._apply_proxy(best)
+                logger.info("Rotated to best proxy %d/%d: %s",
+                             self._proxy_index + 1, len(self._proxy_urls),
+                             self._proxy_url)
+                return
+        # Fallback: round-robin
         self._proxy_index = (self._proxy_index + 1) % len(self._proxy_urls)
         self._apply_proxy(self._proxy_urls[self._proxy_index])
         logger.info("Rotated to proxy %d/%d: %s",
@@ -618,6 +636,8 @@ class HLTVClient:
                 self._last_eval_ok = time.monotonic()
                 tab_rl.backoff()
                 self.rate_limiter.backoff()
+                if self._proxy_health and self._proxy_url:
+                    self._proxy_health.record_failure(self._proxy_url)
                 raise HLTVFetchError(
                     f"Navigation timed out after {self._config.navigation_timeout}s for {url}",
                     url=url,
@@ -870,15 +890,22 @@ class HLTVClient:
                     )
 
         except CloudflareChallenge:
+            if self._proxy_health and self._proxy_url:
+                self._proxy_health.record_failure(self._proxy_url)
             raise
         except HLTVFetchError:
+            if self._proxy_health and self._proxy_url:
+                self._proxy_health.record_failure(self._proxy_url)
             raise
         except ValueError:
             # Raised by _wait_for_selector when page is loaded but element
             # genuinely missing (no data).  Don't wrap in HLTVFetchError —
             # that would trigger tenacity retries on a permanent condition.
+            # Not a proxy issue — don't record as failure.
             raise
         except Exception as exc:
+            if self._proxy_health and self._proxy_url:
+                self._proxy_health.record_failure(self._proxy_url)
             raise HLTVFetchError(
                 f"Failed to fetch {url}: {exc}", url=url
             ) from exc
@@ -888,6 +915,9 @@ class HLTVClient:
         self.rate_limiter.recover()
         self._success_count += 1
         _t_done = time.monotonic()
+        # Record proxy health on success
+        if self._proxy_health and self._proxy_url:
+            self._proxy_health.record_success(self._proxy_url, _t_done - _t0)
         logger.debug(
             "TIMING %s nav=%.2fs sel=%.2fs lock=%.2fs ext=%.2fs total=%.2fs (%d chars)",
             url.split("/")[-2] if "/mapstatsid/" in url else url.split("/")[-1],

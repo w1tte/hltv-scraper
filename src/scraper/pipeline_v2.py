@@ -84,7 +84,6 @@ async def _scrape_match(
     except Exception as exc:
         result["error"] = f"overview fetch: {exc}"
         logger.error("Match %d overview fetch: %s", match_id, exc)
-        discovery_repo.update_status(match_id, "failed")
         return result
 
     await async_save(html, match_id=match_id, page_type="overview")
@@ -94,7 +93,6 @@ async def _scrape_match(
     except Exception as exc:
         result["error"] = f"overview parse: {exc}"
         logger.error("Match %d overview parse: %s", match_id, exc)
-        discovery_repo.update_status(match_id, "failed")
         return result
 
     ts         = now()
@@ -145,7 +143,6 @@ async def _scrape_match(
     validated_match = validate_and_quarantine(match_data, model_cls, ctx, match_repo)
     if validated_match is None:
         logger.error("Match %d failed validation — quarantined", match_id)
-        discovery_repo.update_status(match_id, "failed")
         result["error"] = "validation failed"
         return result
 
@@ -490,10 +487,10 @@ async def run_pipeline_v2(
         "halted": False, "halt_reason": None,
     }
 
-    if force_rescrape:
-        reset = discovery_repo.reset_failed_matches()
-        if reset:
-            logger.info("Reset %d failed matches to pending", reset)
+    # Auto-reset failed matches that haven't exhausted retries (< 5 attempts)
+    reset = discovery_repo.reset_failed_matches()
+    if reset:
+        logger.info("Reset %d failed matches to pending (attempts < 5)", reset)
 
     # ------------------------------------------------------------------ #
     # Phase 1: Discovery — completes fully before any match is processed
@@ -548,15 +545,11 @@ async def run_pipeline_v2(
     _FAILURE_RESTART_THRESHOLD = 3  # rotate proxy after 3 consecutive failures
     # Per-client match counter for proactive proxy rotation
     client_match_count: dict[int, int] = {id(c): 0 for c in clients}
-    _PROXY_ROTATE_EVERY = 50  # rotate less often — restarts waste ~10s
+    _PROXY_ROTATE_EVERY = 150  # restarts waste ~15s; with 6 workers across 20 proxies, rotate infrequently
     # Track consecutive restart failures per client to prevent death spiral
     client_restart_failures: dict[int, int] = {id(c): 0 for c in clients}
     _MAX_RESTART_FAILURES = 5  # after 5 failed restarts, long cooldown
     t0 = time.monotonic()
-
-    def _fail_status(entry: dict) -> str:
-        """'retry' matches stay 'retry' on failure; others go to 'failed'."""
-        return "retry" if entry.get("status") == "retry" else "failed"
 
     async def process_one(entry: dict) -> None:
         # Acquire client FIRST to prevent queue leaks on early-return paths.
@@ -603,7 +596,7 @@ async def run_pipeline_v2(
             except asyncio.TimeoutError:
                 logger.error("Match %d timed out after %.0fs",
                              entry["match_id"], config.per_match_timeout)
-                discovery_repo.update_status(entry["match_id"], _fail_status(entry))
+                discovery_repo.mark_failed(entry["match_id"])
                 counters["failed"] += 1
                 results["overview"]["failed"] += 1
                 # Circuit breaker: restart browser after consecutive failures
@@ -624,6 +617,13 @@ async def run_pipeline_v2(
                 return
 
             client_match_count[id(client)] = client_match_count.get(id(client), 0) + 1
+
+            # Log proxy health stats every 50 matches (across all workers)
+            total_done = counters["done"] + counters["failed"] + 1
+            if total_done % 50 == 0:
+                health = getattr(client, "_proxy_health", None)
+                if health:
+                    health.log_health_summary()
 
             if r["ok"]:
                 client_failures[id(client)] = 0
@@ -646,7 +646,7 @@ async def run_pipeline_v2(
                     except Exception:
                         logger.error("Proactive proxy rotation restart failed")
             else:
-                discovery_repo.update_status(entry["match_id"], _fail_status(entry))
+                discovery_repo.mark_failed(entry["match_id"])
                 counters["failed"] += 1
                 results["overview"]["failed"] += 1
                 logger.warning("[%d/%d] Match %d failed: %s",
