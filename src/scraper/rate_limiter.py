@@ -46,6 +46,11 @@ class RateLimiter:
         self._last_request_time: float = 0.0
         self._lock = asyncio.Lock()
 
+        # Accelerated recovery after consecutive successes
+        self._fast_recovery = config.fast_recovery
+        self._fast_recovery_threshold = config.fast_recovery_threshold
+        self._consecutive_successes: int = 0
+
     @property
     def current_delay(self) -> float:
         """Current base delay value in seconds."""
@@ -80,6 +85,7 @@ class RateLimiter:
 
     def backoff(self) -> None:
         """Increase delay after a failed request or Cloudflare challenge."""
+        self._consecutive_successes = 0
         self._current_delay = min(
             self._current_delay * self._backoff_factor,
             self._max_backoff,
@@ -89,9 +95,21 @@ class RateLimiter:
         )
 
     def recover(self) -> None:
-        """Gradually decrease delay after a successful request."""
+        """Gradually decrease delay after a successful request.
+
+        When fast_recovery is enabled and consecutive successes exceed the
+        threshold, uses recovery_factor^2 for more aggressive recovery.
+        """
+        self._consecutive_successes += 1
+        if (
+            self._fast_recovery
+            and self._consecutive_successes >= self._fast_recovery_threshold
+        ):
+            factor = self._recovery_factor ** 2
+        else:
+            factor = self._recovery_factor
         self._current_delay = max(
-            self._current_delay * self._recovery_factor,
+            self._current_delay * factor,
             self._min_delay,
         )
 

@@ -93,6 +93,68 @@ class TestRecover:
         assert limiter.current_delay == 3.0
 
 
+class TestAcceleratedRecovery:
+    """Tests for fast recovery after consecutive successes."""
+
+    def test_normal_recovery_when_disabled(self):
+        """Without fast_recovery, recover() always uses recovery_factor."""
+        limiter = _make_limiter(
+            min_delay=1.0, recovery_factor=0.75, fast_recovery=False
+        )
+        limiter._current_delay = 10.0
+        for _ in range(10):
+            limiter.recover()
+        # 10 * 0.75^10 ≈ 0.56, floored at min_delay=1.0
+        assert limiter.current_delay == 1.0
+
+    def test_accelerated_recovery_after_threshold(self):
+        """With fast_recovery, recovery is faster after N consecutive successes."""
+        limiter = _make_limiter(
+            min_delay=0.01, recovery_factor=0.75,
+            fast_recovery=True, fast_recovery_threshold=3,
+        )
+        limiter._current_delay = 10.0
+
+        # First 2 recoveries use normal factor (0.75)
+        limiter.recover()
+        assert limiter._consecutive_successes == 1
+        assert limiter.current_delay == pytest.approx(7.5)
+
+        limiter.recover()
+        assert limiter._consecutive_successes == 2
+        assert limiter.current_delay == pytest.approx(5.625)
+
+        # Third recovery hits threshold — uses 0.75^2 = 0.5625
+        limiter.recover()
+        assert limiter._consecutive_successes == 3
+        assert limiter.current_delay == pytest.approx(5.625 * 0.75 ** 2)
+
+    def test_backoff_resets_consecutive_count(self):
+        """A backoff() call resets the consecutive success counter."""
+        limiter = _make_limiter(
+            min_delay=0.01, recovery_factor=0.75,
+            fast_recovery=True, fast_recovery_threshold=3,
+        )
+        limiter._current_delay = 10.0
+        for _ in range(5):
+            limiter.recover()
+        assert limiter._consecutive_successes == 5
+
+        limiter.backoff()
+        assert limiter._consecutive_successes == 0
+
+    def test_delay_never_below_min(self):
+        """Even with fast recovery, delay floors at min_delay."""
+        limiter = _make_limiter(
+            min_delay=1.0, recovery_factor=0.5,
+            fast_recovery=True, fast_recovery_threshold=1,
+        )
+        limiter._current_delay = 2.0
+        for _ in range(100):
+            limiter.recover()
+        assert limiter.current_delay == 1.0
+
+
 class TestReset:
     """Tests for RateLimiter.reset()."""
 

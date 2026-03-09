@@ -23,6 +23,10 @@ class ScraperConfig:
     # Gradual recovery on success (multiply current delay by this)
     recovery_factor: float = 0.75
 
+    # Accelerated recovery: after N consecutive successes, use recovery_factor^2
+    fast_recovery: bool = False
+    fast_recovery_threshold: int = 5
+
     # Maximum delay ceiling (seconds)
     max_backoff: float = 3.0
 
