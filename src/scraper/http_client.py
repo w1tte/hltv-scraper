@@ -595,11 +595,11 @@ class HLTVClient:
             except Exception:
                 pass
 
-            # Navigate with a short post-nav sleep to let the browser begin
-            # tearing down the old DOM.  0.5s balances speed with reliability
-            # (0.1s was too fast — DOM was still from the previous page).
+            # Navigate with a minimal post-nav sleep.  The two-phase
+            # readyState detection below handles actual DOM readiness;
+            # this just avoids racing the very first CDP eval.
             _orig_sleep = tab.sleep
-            tab.sleep = lambda t=0.3: _orig_sleep(0.3)
+            tab.sleep = lambda t=0.05: _orig_sleep(0.05)
             try:
                 # Nav lock serialises CDP Page.navigate across tabs (multi-tab only)
                 nav_coro = asyncio.wait_for(
