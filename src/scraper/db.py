@@ -182,7 +182,8 @@ CREATE TABLE IF NOT EXISTS scrape_queue (
     "offset"      INTEGER NOT NULL,
     discovered_at TEXT NOT NULL,
     is_forfeit    INTEGER NOT NULL DEFAULT 0,
-    status        TEXT NOT NULL DEFAULT 'pending'
+    status        TEXT NOT NULL DEFAULT 'pending',
+    started_at    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS discovery_progress (

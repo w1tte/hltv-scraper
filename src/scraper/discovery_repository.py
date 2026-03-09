@@ -33,6 +33,16 @@ MARK_OFFSET = """
 
 UPDATE_STATUS = "UPDATE scrape_queue SET status = %s WHERE match_id = %s"
 
+MARK_IN_PROGRESS = (
+    "UPDATE scrape_queue SET status = 'in_progress', "
+    "started_at = %s WHERE match_id = %s"
+)
+
+RESET_IN_PROGRESS = (
+    "UPDATE scrape_queue SET status = 'pending', started_at = NULL "
+    "WHERE status = 'in_progress'"
+)
+
 
 # ---------------------------------------------------------------------------
 # Repository class
@@ -105,13 +115,39 @@ class DiscoveryRepository:
             existing = cur.fetchone()[0]
         return len(match_ids) - existing
 
-    def reset_failed_matches(self) -> int:
+    def reset_failed_matches(self, max_attempts: int = 5) -> int:
+        """Auto-reset failed matches that haven't exhausted their retries.
+
+        Only resets matches with fewer than *max_attempts* attempts.
+        Matches at or above the limit stay 'failed' for manual review.
+        """
         with self.conn:
             with self.conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE scrape_queue SET status = 'pending' WHERE status = 'failed'"
+                    "UPDATE scrape_queue SET status = 'pending' "
+                    "WHERE status = 'failed' AND attempts < %s",
+                    (max_attempts,),
                 )
                 return cur.rowcount
+
+    def mark_failed(self, match_id: int, max_attempts: int = 5) -> None:
+        """Increment attempt counter and set appropriate failure status.
+
+        - attempts < max_attempts  → 'failed'  (eligible for auto-retry)
+        - attempts >= max_attempts → 'failed_permanent'  (manual retry
+          already happened and failed again — final verdict)
+        """
+        with self.conn:
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE scrape_queue "
+                    "SET attempts = attempts + 1, "
+                    "    status = CASE WHEN attempts >= %s "
+                    "                  THEN 'failed_permanent' "
+                    "                  ELSE 'failed' END "
+                    "WHERE match_id = %s",
+                    (max_attempts, match_id),
+                )
 
     # ------------------------------------------------------------------
     # Count / read methods
@@ -162,3 +198,22 @@ class DiscoveryRepository:
         with self.conn:
             with self.conn.cursor() as cur:
                 cur.execute(UPDATE_STATUS, (status, match_id))
+
+    def mark_in_progress(self, match_id: int) -> None:
+        """Set status to 'in_progress' with a started_at timestamp."""
+        with self.conn:
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    MARK_IN_PROGRESS,
+                    (datetime.now(timezone.utc).isoformat(), match_id),
+                )
+
+    def recover_in_progress(self) -> int:
+        """Reset all 'in_progress' matches back to 'pending' (crash recovery).
+
+        Returns the number of recovered matches.
+        """
+        with self.conn:
+            with self.conn.cursor() as cur:
+                cur.execute(RESET_IN_PROGRESS)
+                return cur.rowcount

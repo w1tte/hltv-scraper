@@ -487,6 +487,11 @@ async def run_pipeline_v2(
         "halted": False, "halt_reason": None,
     }
 
+    # Crash recovery: reset in-progress matches from previous interrupted run
+    recovered = discovery_repo.recover_in_progress()
+    if recovered:
+        logger.info("Recovered %d in-flight matches from previous crash → pending", recovered)
+
     # Auto-reset failed matches that haven't exhausted retries (< 5 attempts)
     reset = discovery_repo.reset_failed_matches()
     if reset:
@@ -564,6 +569,9 @@ async def run_pipeline_v2(
         try:
             if shutdown.is_set:
                 return
+
+            # Mark match as in-progress for crash recovery tracking (US-008)
+            discovery_repo.mark_in_progress(entry["match_id"])
 
             # Health check: restart browser if Chrome crashed or unresponsive
             if not client.is_healthy:
