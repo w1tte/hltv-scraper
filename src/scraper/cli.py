@@ -160,6 +160,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Enable accelerated rate limiter recovery after consecutive successes",
     )
+    parser.add_argument(
+        "--watchdog-timeout",
+        type=float,
+        default=None,
+        help="Seconds before watchdog restarts a stuck worker (default: 600)",
+    )
     return parser
 
 
@@ -234,6 +240,8 @@ async def async_main(args: argparse.Namespace) -> None:
         config_overrides["per_match_timeout"] = args.per_match_timeout
     if args.fast_recovery:
         config_overrides["fast_recovery"] = True
+    if args.watchdog_timeout is not None:
+        config_overrides["watchdog_timeout"] = args.watchdog_timeout
     config = ScraperConfig(**config_overrides)
 
     mode = "full" if args.full else "incremental"

@@ -549,11 +549,18 @@ async def run_pipeline_v2(
     # Track consecutive restart failures per client to prevent death spiral
     client_restart_failures: dict[int, int] = {id(c): 0 for c in clients}
     _MAX_RESTART_FAILURES = 5  # after 5 failed restarts, long cooldown
+    # Watchdog: track active workers to detect stuck ones
+    active_workers: dict[int, dict] = {}  # client_id -> {match_id, started_at, task}
     t0 = time.monotonic()
 
     async def process_one(entry: dict) -> None:
         # Acquire client FIRST to prevent queue leaks on early-return paths.
         client = await client_queue.get()
+        active_workers[id(client)] = {
+            "match_id": entry["match_id"],
+            "started_at": time.monotonic(),
+            "task": asyncio.current_task(),
+        }
         try:
             if shutdown.is_set:
                 return
@@ -667,6 +674,11 @@ async def run_pipeline_v2(
                         client_restart_failures[id(client)] = client_restart_failures.get(id(client), 0) + 1
                         logger.error("Circuit-breaker restart failed (attempt %d)",
                                      client_restart_failures[id(client)])
+        except asyncio.CancelledError:
+            # Watchdog cancelled us — match already marked failed by watchdog.
+            # Let the is_healthy check handle browser restart on next acquire.
+            logger.warning("Worker cancelled by watchdog for match %d", entry["match_id"])
+            raise
         except Exception as exc:
             counters["failed"] += 1
             results["overview"]["failed"] += 1
@@ -679,27 +691,63 @@ async def run_pipeline_v2(
                 except Exception:
                     logger.error("Post-crash browser restart also failed")
         finally:
+            active_workers.pop(id(client), None)
             client_queue.put_nowait(client)
+
+    # ---- Watchdog: detect and restart stuck workers ----------------------
+    async def _watchdog():
+        """Periodically check for workers stuck longer than watchdog_timeout."""
+        while not shutdown.is_set:
+            await asyncio.sleep(60)
+            now = time.monotonic()
+            for client_id, info in list(active_workers.items()):
+                elapsed = now - info["started_at"]
+                if elapsed > config.watchdog_timeout:
+                    match_id = info["match_id"]
+                    logger.warning(
+                        "Watchdog: worker stuck on match %d for %.0fs "
+                        "(timeout=%.0fs) — killing task",
+                        match_id, elapsed, config.watchdog_timeout,
+                    )
+                    # Mark match as failed so it returns to pending on retry
+                    try:
+                        discovery_repo.mark_failed(match_id)
+                    except Exception:
+                        logger.error("Watchdog: failed to mark match %d", match_id)
+                    counters["failed"] += 1
+                    results["overview"]["failed"] += 1
+                    # Cancel the stuck task
+                    task = info.get("task")
+                    if task and not task.done():
+                        task.cancel()
 
     # Process matches in bounded-concurrency batches instead of spawning
     # all N tasks at once.  With 25k matches, asyncio.gather(all) would
     # create 25k live coroutines — each holding a stack frame and awaiting
     # the client_queue.  Batching to 8× worker count keeps memory flat
     # while ensuring workers always have queued work ready.
+    watchdog_task = asyncio.create_task(_watchdog())
     batch_size = len(clients) * 8
-    for batch_start in range(0, len(pending), batch_size):
-        if shutdown.is_set:
-            break
-        batch = pending[batch_start:batch_start + batch_size]
-        await asyncio.gather(*[process_one(e) for e in batch], return_exceptions=True)
-        # Circuit breaker: warn on high batch failure rate
-        total_processed = counters["done"] + counters["failed"]
-        if total_processed > 0 and counters["failed"] / total_processed > 0.5:
-            logger.warning(
-                "High failure rate: %d/%d (%.0f%%) — possible systemic issue",
-                counters["failed"], total_processed,
-                100 * counters["failed"] / total_processed,
-            )
+    try:
+        for batch_start in range(0, len(pending), batch_size):
+            if shutdown.is_set:
+                break
+            batch = pending[batch_start:batch_start + batch_size]
+            await asyncio.gather(*[process_one(e) for e in batch], return_exceptions=True)
+            # Circuit breaker: warn on high batch failure rate
+            total_processed = counters["done"] + counters["failed"]
+            if total_processed > 0 and counters["failed"] / total_processed > 0.5:
+                logger.warning(
+                    "High failure rate: %d/%d (%.0f%%) — possible systemic issue",
+                    counters["failed"], total_processed,
+                    100 * counters["failed"] / total_processed,
+                )
+    finally:
+        watchdog_task.cancel()
+        try:
+            await watchdog_task
+        except asyncio.CancelledError:
+            pass
 
     logger.info("Worker pool done: %d ok, %d failed, %.0fs elapsed",
                 counters["done"], counters["failed"], time.monotonic() - t0)
