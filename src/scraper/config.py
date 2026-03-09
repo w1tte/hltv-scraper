@@ -60,6 +60,10 @@ class ScraperConfig:
     # Watchdog: restart workers stuck longer than this (seconds)
     watchdog_timeout: float = 600.0
 
+    # Memory-based browser recycling
+    memory_limit_mb: int = 300          # Restart browser when RSS exceeds this (MB)
+    memory_check_interval: int = 25     # Check memory every N matches per worker
+
     # Seconds to poll for Cloudflare challenge to clear during fetches
     challenge_wait: float = 30.0
 

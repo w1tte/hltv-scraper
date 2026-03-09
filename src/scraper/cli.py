@@ -166,6 +166,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Seconds before watchdog restarts a stuck worker (default: 600)",
     )
+    parser.add_argument(
+        "--memory-limit",
+        type=int,
+        default=None,
+        help="Restart browser when RSS exceeds this many MB (default: 300, 0 to disable)",
+    )
     return parser
 
 
@@ -242,6 +248,8 @@ async def async_main(args: argparse.Namespace) -> None:
         config_overrides["fast_recovery"] = True
     if args.watchdog_timeout is not None:
         config_overrides["watchdog_timeout"] = args.watchdog_timeout
+    if args.memory_limit is not None:
+        config_overrides["memory_limit_mb"] = args.memory_limit
     config = ScraperConfig(**config_overrides)
 
     mode = "full" if args.full else "incremental"

@@ -652,6 +652,30 @@ async def run_pipeline_v2(
                         client_restart_failures[id(client)] = 0
                     except Exception:
                         logger.error("Proactive proxy rotation restart failed")
+
+                # Memory-based browser recycling (US-006)
+                elif (config.memory_limit_mb > 0
+                      and client_match_count[id(client)] % config.memory_check_interval == 0):
+                    rss_mb = client.get_browser_rss_mb()
+                    if rss_mb is not None:
+                        logger.info(
+                            "Memory check: %.1f MB / %d MB threshold "
+                            "(%d matches since last restart)",
+                            rss_mb, config.memory_limit_mb,
+                            client_match_count[id(client)],
+                        )
+                        if rss_mb > config.memory_limit_mb:
+                            logger.warning(
+                                "Browser RSS %.1f MB exceeds %d MB limit — recycling",
+                                rss_mb, config.memory_limit_mb,
+                            )
+                            try:
+                                await client.restart()
+                                client_failures[id(client)] = 0
+                                client_restart_failures[id(client)] = 0
+                                client_match_count[id(client)] = 0
+                            except Exception:
+                                logger.error("Memory-triggered browser restart failed")
             else:
                 discovery_repo.mark_failed(entry["match_id"])
                 counters["failed"] += 1

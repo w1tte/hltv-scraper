@@ -529,14 +529,14 @@ class HLTVClient:
         # Log browser RSS memory on startup (US-005)
         self._log_browser_memory()
 
-    def _log_browser_memory(self) -> None:
-        """Log RSS memory of the browser process tree (best-effort)."""
+    def get_browser_rss_mb(self) -> float | None:
+        """Return total RSS memory (MB) of the browser process tree, or None on failure."""
         try:
             import psutil
             _proc = getattr(self._browser, "_process", None)
             pid = _proc.pid if _proc is not None else None
             if not pid:
-                return
+                return None
             parent = psutil.Process(pid)
             total_rss = parent.memory_info().rss
             for child in parent.children(recursive=True):
@@ -544,10 +544,17 @@ class HLTVClient:
                     total_rss += child.memory_info().rss
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
-            rss_mb = total_rss / (1024 * 1024)
-            logger.info("Browser RSS memory: %.1f MB (pid=%d)", rss_mb, pid)
+            return total_rss / (1024 * 1024)
         except (ImportError, Exception):
-            pass  # psutil optional — best-effort only
+            return None
+
+    def _log_browser_memory(self) -> None:
+        """Log RSS memory of the browser process tree (best-effort)."""
+        rss_mb = self.get_browser_rss_mb()
+        if rss_mb is not None:
+            _proc = getattr(self._browser, "_process", None)
+            pid = _proc.pid if _proc is not None else None
+            logger.info("Browser RSS memory: %.1f MB (pid=%s)", rss_mb, pid)
 
     async def _dismiss_consent(self, tab) -> bool:
         """Click Cookiebot 'Allow All' if the consent dialog is visible.
