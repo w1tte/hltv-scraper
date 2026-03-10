@@ -279,40 +279,57 @@ class HLTVClient:
             except Exception as exc:
                 last_exc = exc
                 logger.warning("Restart attempt %d/3 failed: %s", attempt + 1, exc)
+                # close() already called by start() on failure, but do an
+                # extra orphan sweep before next attempt
+                await self._kill_stale_chrome()
                 if attempt < 2:
-                    await self._kill_stale_chrome()
                     await asyncio.sleep(2.0 * (attempt + 1))
+        # Final aggressive cleanup after all attempts exhausted
+        await self._kill_stale_chrome()
         raise HLTVFetchError(
             f"Browser restart failed after 3 attempts: {last_exc}", url=""
         )
 
     async def _kill_stale_chrome(self) -> None:
-        """Kill orphaned Chrome processes from this client and clean temp dirs.
+        """Kill orphaned/zombie Chrome processes and clean temp dirs.
 
-        Called between restart attempts when nodriver.start() fails.
-        Only kills Chrome processes that belong to this client's last
-        known PID tree — safe with multiple workers in the same container.
+        Called after close() and between restart attempts. Kills Chrome
+        processes that are orphaned (ppid==1), zombies, or have no
+        associated browser object. This is critical to prevent process
+        leaks when nodriver.start() fails partway through.
         """
+        killed = 0
         try:
             import psutil
-            # Kill any chrome processes whose parent is PID 1 (orphans) or
-            # that match our last known browser PID
-            for proc in psutil.process_iter(["pid", "name", "ppid"]):
+            for proc in psutil.process_iter(["pid", "name", "ppid", "status"]):
                 try:
                     name = proc.info.get("name", "") or ""
                     if "chrome" not in name.lower():
                         continue
                     ppid = proc.info.get("ppid", -1)
-                    # Orphaned (parent is init/PID 1) or zombie
-                    if ppid in (0, 1):
+                    status = proc.info.get("status", "")
+                    # Kill if: orphaned (parent is init/PID 1), zombie, or
+                    # parent is dead (NoSuchProcess on parent lookup)
+                    should_kill = ppid in (0, 1) or status == psutil.STATUS_ZOMBIE
+                    if not should_kill:
+                        try:
+                            psutil.Process(ppid)
+                        except psutil.NoSuchProcess:
+                            should_kill = True  # parent is gone → orphan
+                    if should_kill:
                         proc.kill()
+                        killed += 1
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
         except ImportError:
-            # psutil not available — fall back to pkill (less safe but
-            # better than a completely stuck browser)
             import subprocess
             try:
+                # Count before kill for logging
+                result = subprocess.run(
+                    ["pgrep", "-c", "-f", "chrome"],
+                    capture_output=True, timeout=5, text=True,
+                )
+                killed = int(result.stdout.strip()) if result.returncode == 0 else 0
                 subprocess.run(
                     ["pkill", "-9", "-f", "chrome"],
                     capture_output=True, timeout=5,
@@ -321,6 +338,8 @@ class HLTVClient:
                 pass
         except Exception:
             pass
+        if killed:
+            logger.warning("Killed %d orphaned/zombie Chrome processes", killed)
         await asyncio.sleep(0.5)
 
     @staticmethod
@@ -412,6 +431,19 @@ class HLTVClient:
             no_sandbox=True,
         )
 
+        # Everything after nodriver.start() must be wrapped so that if warmup
+        # or tab creation fails, we still close the browser we just spawned.
+        try:
+            await self._post_start_warmup()
+        except Exception:
+            # Browser was spawned but warmup/tabs failed — close it so
+            # Chrome processes don't leak.
+            await self.close()
+            raise
+
+    async def _post_start_warmup(self) -> None:
+        """Warm up browser after Chrome launch — separated so start() can
+        cleanup on failure."""
         # Warm-up: visit a results page with gameType to match real fetch URLs
         warmup_url = (
             f"{self._config.base_url}/results?offset=0"
@@ -1267,10 +1299,10 @@ class HLTVClient:
         Uses nodriver's ``util.free()`` so the temp ``/tmp/uc_*`` profile dir
         is removed.  Then escalates from SIGTERM → SIGKILL for any surviving
         Chrome child processes to prevent accumulation across runs.
-        """
-        if not self._browser:
-            return
 
+        Always runs orphan cleanup even if self._browser is None — this handles
+        leaked processes from failed start() attempts.
+        """
         browser = self._browser
         self._browser = None
         self._tabs.clear()
@@ -1284,50 +1316,56 @@ class HLTVClient:
                 pass
             self._proxy_forwarder = None
 
-        # nodriver util.free(): stops browser + deletes /tmp/uc_* profile dir
-        try:
-            import nodriver.core.util as _nd_util
-            task = _nd_util.free(browser)
-            if task is not None:
-                try:
-                    await asyncio.wait_for(asyncio.shield(task), timeout=4.0)
-                except (asyncio.TimeoutError, Exception):
-                    pass
-        except Exception:
-            # Fall back to plain stop() if util.free() is unavailable
+        if browser:
+            # nodriver util.free(): stops browser + deletes /tmp/uc_* profile dir
             try:
-                browser.stop()
+                import nodriver.core.util as _nd_util
+                task = _nd_util.free(browser)
+                if task is not None:
+                    try:
+                        await asyncio.wait_for(asyncio.shield(task), timeout=4.0)
+                    except (asyncio.TimeoutError, Exception):
+                        pass
+            except Exception:
+                # Fall back to plain stop() if util.free() is unavailable
+                try:
+                    browser.stop()
+                except Exception:
+                    pass
+
+            await asyncio.sleep(0.3)
+
+            # Kill any surviving Chrome children of this browser's PID
+            try:
+                import signal as _signal
+                import psutil
+                _proc = getattr(browser, "_process", None)
+                pid = _proc.pid if _proc is not None else None
+                if pid:
+                    try:
+                        parent = psutil.Process(pid)
+                        children = parent.children(recursive=True)
+                        for child in children:
+                            try:
+                                child.send_signal(_signal.SIGKILL)
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                pass
+                        # Also kill the parent if still alive
+                        try:
+                            parent.send_signal(_signal.SIGKILL)
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                    except psutil.NoSuchProcess:
+                        pass  # Already dead — good
+            except ImportError:
+                pass  # psutil optional — best-effort only
             except Exception:
                 pass
 
-        await asyncio.sleep(0.3)
-
-        # Kill any surviving Chrome children of this browser's PID
-        try:
-            import signal as _signal
-            import psutil
-            _proc = getattr(browser, "_process", None)
-            pid = _proc.pid if _proc is not None else None
-            if pid:
-                try:
-                    parent = psutil.Process(pid)
-                    children = parent.children(recursive=True)
-                    for child in children:
-                        try:
-                            child.send_signal(_signal.SIGKILL)
-                        except (psutil.NoSuchProcess, psutil.AccessDenied):
-                            pass
-                    # Also kill the parent if still alive
-                    try:
-                        parent.send_signal(_signal.SIGKILL)
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
-                except psutil.NoSuchProcess:
-                    pass  # Already dead — good
-        except ImportError:
-            pass  # psutil optional — best-effort only
-        except Exception:
-            pass
+        # Always kill orphaned Chrome processes (ppid==1 or zombies).
+        # This catches leaked processes from failed start() attempts where
+        # self._browser was never set.
+        await self._kill_stale_chrome()
 
     async def __aenter__(self) -> "HLTVClient":
         await self.start()

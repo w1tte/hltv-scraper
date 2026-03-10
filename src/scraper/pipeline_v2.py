@@ -554,6 +554,7 @@ async def run_pipeline_v2(
     # Track consecutive restart failures per client to prevent death spiral
     client_restart_failures: dict[int, int] = {id(c): 0 for c in clients}
     _MAX_RESTART_FAILURES = 5  # after 5 failed restarts, long cooldown
+    _GLOBAL_RESTART_FAILURE_LIMIT = 20  # if total restart failures hit this, nuke all chrome
     # Watchdog: track active workers to detect stuck ones
     active_workers: dict[int, dict] = {}  # client_id -> {match_id, started_at, task}
     t0 = time.monotonic()
@@ -576,7 +577,21 @@ async def run_pipeline_v2(
             # Health check: restart browser if Chrome crashed or unresponsive
             if not client.is_healthy:
                 rf = client_restart_failures.get(id(client), 0)
-                if rf >= _MAX_RESTART_FAILURES:
+                total_rf = sum(client_restart_failures.values())
+                if total_rf >= _GLOBAL_RESTART_FAILURE_LIMIT:
+                    # All workers are struggling — nuclear option: kill all
+                    # chrome processes, long cooldown, then try fresh.
+                    logger.error(
+                        "Global restart failures hit %d — killing all Chrome "
+                        "processes and cooling down 60s",
+                        total_rf,
+                    )
+                    await client._kill_stale_chrome()
+                    # Reset all counters so workers get a fresh start
+                    for k in client_restart_failures:
+                        client_restart_failures[k] = 0
+                    await asyncio.sleep(60.0)
+                elif rf >= _MAX_RESTART_FAILURES:
                     # Long cooldown to let resources recover
                     logger.warning(
                         "Client has %d consecutive restart failures — cooling down 30s",
