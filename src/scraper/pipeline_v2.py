@@ -555,6 +555,8 @@ async def run_pipeline_v2(
     client_restart_failures: dict[int, int] = {id(c): 0 for c in clients}
     _MAX_RESTART_FAILURES = 5  # after 5 failed restarts, long cooldown
     _GLOBAL_RESTART_FAILURE_LIMIT = 20  # if total restart failures hit this, nuke all chrome
+    # Serialize browser restarts — concurrent restarts compete for PIDs and fail each other
+    _restart_lock = asyncio.Lock()
     # Watchdog: track active workers to detect stuck ones
     active_workers: dict[int, dict] = {}  # client_id -> {match_id, started_at, task}
     t0 = time.monotonic()
@@ -576,41 +578,40 @@ async def run_pipeline_v2(
 
             # Health check: restart browser if Chrome crashed or unresponsive
             if not client.is_healthy:
-                rf = client_restart_failures.get(id(client), 0)
-                total_rf = sum(client_restart_failures.values())
-                if total_rf >= _GLOBAL_RESTART_FAILURE_LIMIT:
-                    # All workers are struggling — nuclear option: kill all
-                    # chrome processes, long cooldown, then try fresh.
-                    logger.error(
-                        "Global restart failures hit %d — killing all Chrome "
-                        "processes and cooling down 60s",
-                        total_rf,
-                    )
-                    await client._kill_stale_chrome()
-                    # Reset all counters so workers get a fresh start
-                    for k in client_restart_failures:
-                        client_restart_failures[k] = 0
-                    await asyncio.sleep(60.0)
-                elif rf >= _MAX_RESTART_FAILURES:
-                    # Long cooldown to let resources recover
-                    logger.warning(
-                        "Client has %d consecutive restart failures — cooling down 30s",
-                        rf,
-                    )
-                    await asyncio.sleep(30.0)
-                try:
-                    await client.restart()
-                    client_failures[id(client)] = 0
-                    client_restart_failures[id(client)] = 0
-                except Exception as restart_exc:
-                    client_restart_failures[id(client)] = rf + 1
-                    logger.error("Browser restart failed for match %d (attempt %d): %s",
-                                 entry["match_id"], rf + 1, restart_exc)
-                    counters["failed"] += 1
-                    results["overview"]["failed"] += 1
-                    # Cooldown before client re-enters queue
-                    await asyncio.sleep(min(5.0 * (rf + 1), 30.0))
-                    return
+                async with _restart_lock:
+                    # Re-check after acquiring lock — another worker's restart
+                    # may have freed resources that fixed our browser too.
+                    if not client.is_healthy:
+                        rf = client_restart_failures.get(id(client), 0)
+                        total_rf = sum(client_restart_failures.values())
+                        if total_rf >= _GLOBAL_RESTART_FAILURE_LIMIT:
+                            logger.error(
+                                "Global restart failures hit %d — killing all Chrome "
+                                "processes and cooling down 60s",
+                                total_rf,
+                            )
+                            await client._kill_stale_chrome()
+                            for k in client_restart_failures:
+                                client_restart_failures[k] = 0
+                            await asyncio.sleep(60.0)
+                        elif rf >= _MAX_RESTART_FAILURES:
+                            logger.warning(
+                                "Client has %d consecutive restart failures — cooling down 30s",
+                                rf,
+                            )
+                            await asyncio.sleep(30.0)
+                        try:
+                            await client.restart()
+                            client_failures[id(client)] = 0
+                            client_restart_failures[id(client)] = 0
+                        except Exception as restart_exc:
+                            client_restart_failures[id(client)] = rf + 1
+                            logger.error("Browser restart failed for match %d (attempt %d): %s",
+                                         entry["match_id"], rf + 1, restart_exc)
+                            counters["failed"] += 1
+                            results["overview"]["failed"] += 1
+                            await asyncio.sleep(min(5.0 * (rf + 1), 30.0))
+                            return
 
             # Per-match timeout: defense-in-depth against hung matches
             try:
@@ -636,14 +637,15 @@ async def run_pipeline_v2(
                         "Client hit %d consecutive failures — rotating proxy",
                         client_failures[id(client)],
                     )
-                    try:
-                        await client.restart()
-                        client_failures[id(client)] = 0
-                        client_restart_failures[id(client)] = 0
-                    except Exception:
-                        client_restart_failures[id(client)] = client_restart_failures.get(id(client), 0) + 1
-                        logger.error("Circuit-breaker restart failed (attempt %d)",
-                                     client_restart_failures[id(client)])
+                    async with _restart_lock:
+                        try:
+                            await client.restart()
+                            client_failures[id(client)] = 0
+                            client_restart_failures[id(client)] = 0
+                        except Exception:
+                            client_restart_failures[id(client)] = client_restart_failures.get(id(client), 0) + 1
+                            logger.error("Circuit-breaker restart failed (attempt %d)",
+                                         client_restart_failures[id(client)])
                 return
 
             client_match_count[id(client)] = client_match_count.get(id(client), 0) + 1
@@ -713,14 +715,15 @@ async def run_pipeline_v2(
                         "Client hit %d consecutive failures — rotating proxy",
                         client_failures[id(client)],
                     )
-                    try:
-                        await client.restart()
-                        client_failures[id(client)] = 0
-                        client_restart_failures[id(client)] = 0
-                    except Exception:
-                        client_restart_failures[id(client)] = client_restart_failures.get(id(client), 0) + 1
-                        logger.error("Circuit-breaker restart failed (attempt %d)",
-                                     client_restart_failures[id(client)])
+                    async with _restart_lock:
+                        try:
+                            await client.restart()
+                            client_failures[id(client)] = 0
+                            client_restart_failures[id(client)] = 0
+                        except Exception:
+                            client_restart_failures[id(client)] = client_restart_failures.get(id(client), 0) + 1
+                            logger.error("Circuit-breaker restart failed (attempt %d)",
+                                         client_restart_failures[id(client)])
         except asyncio.CancelledError:
             # Watchdog cancelled us — match already marked failed by watchdog.
             # Let the is_healthy check handle browser restart on next acquire.
