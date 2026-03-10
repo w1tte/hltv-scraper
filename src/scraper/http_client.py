@@ -703,11 +703,11 @@ class HLTVClient:
                 # Nav timeout — page didn't load but browser is alive.
                 # Update health timestamp so retry loop doesn't trigger
                 # false "unresponsive" restarts.
-                # NOTE: Do NOT backoff rate limiter here. Nav timeouts are
-                # network/proxy latency, not Cloudflare throttling. Backing
-                # off on timeouts makes all subsequent requests slower for
-                # no reason.
+                # Mild backoff on tab rate limiter only (not global) — prevents
+                # hammering the same proxy too fast after a timeout, but doesn't
+                # penalize other workers/tabs.
                 self._last_eval_ok = time.monotonic()
+                tab_rl.backoff()
                 if self._proxy_health and self._proxy_url:
                     self._proxy_health.record_failure(self._proxy_url)
                 raise HLTVFetchError(
