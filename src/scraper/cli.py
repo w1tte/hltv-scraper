@@ -398,7 +398,7 @@ async def async_main(args: argparse.Namespace) -> None:
                         except Exception:
                             pass
                     if i < args.workers - 1:
-                        await asyncio.sleep(0.3)
+                        await asyncio.sleep(3.0)
                 return pool
 
             # Run discovery on first browser while warming up the rest
