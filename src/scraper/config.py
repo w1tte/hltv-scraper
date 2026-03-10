@@ -49,7 +49,7 @@ class ScraperConfig:
     concurrent_tabs: int = 2
 
     # CDP navigation timeout (asyncio.wait_for around tab.get())
-    navigation_timeout: float = 15.0
+    navigation_timeout: float = 20.0
 
     # CDP evaluate timeout (asyncio.wait_for around tab.evaluate())
     evaluate_timeout: float = 8.0
