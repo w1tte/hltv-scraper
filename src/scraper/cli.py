@@ -372,31 +372,38 @@ async def async_main(args: argparse.Namespace) -> None:
                 raise RuntimeError("Could not start browser 1 (tried proxy + direct)")
 
             async def _warm_remaining():
-                """Start browsers 2..N with staggered delays."""
+                """Start browsers 2..N with staggered delays and retries."""
                 pool = []
                 for i in range(1, args.workers):
                     worker_proxies = _proxy_sublist(i)
-                    try:
-                        c = HLTVClient(config, proxy_urls=worker_proxies or None, forwarder_port=18080 + i)
-                        await c.start()
-                        pool.append(c)
-                        clients_to_close.append(c)
-                        logger.info(
-                            "Browser %d/%d ready (worker via %s, %d proxies in rotation)",
-                            i + 1, args.workers,
-                            worker_proxies[0] if worker_proxies else "direct",
-                            len(worker_proxies),
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            "Browser %d/%d failed (%s): %s — skipping",
-                            i + 1, args.workers,
-                            worker_proxies[0] if worker_proxies else "direct", e,
-                        )
+                    started = False
+                    for attempt in range(3):
                         try:
-                            await c.close()
-                        except Exception:
-                            pass
+                            c = HLTVClient(config, proxy_urls=worker_proxies or None, forwarder_port=18080 + i)
+                            await c.start()
+                            pool.append(c)
+                            clients_to_close.append(c)
+                            logger.info(
+                                "Browser %d/%d ready (worker via %s, %d proxies in rotation)",
+                                i + 1, args.workers,
+                                worker_proxies[0] if worker_proxies else "direct",
+                                len(worker_proxies),
+                            )
+                            started = True
+                            break
+                        except Exception as e:
+                            logger.warning(
+                                "Browser %d/%d attempt %d/3 failed (%s): %s",
+                                i + 1, args.workers, attempt + 1,
+                                worker_proxies[0] if worker_proxies else "direct", e,
+                            )
+                            try:
+                                await c.close()
+                            except Exception:
+                                pass
+                            await asyncio.sleep(3.0)
+                    if not started:
+                        logger.error("Browser %d/%d failed after 3 attempts — skipping", i + 1, args.workers)
                     if i < args.workers - 1:
                         await asyncio.sleep(3.0)
                 return pool
