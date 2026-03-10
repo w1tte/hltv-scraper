@@ -22,7 +22,7 @@ services:
     container_name: hltv-scraper
     restart: "no"
     profiles: ["scraper"]
-    pids_limit: 500
+    pids_limit: 700
     depends_on:
       postgres:
         condition: service_healthy
