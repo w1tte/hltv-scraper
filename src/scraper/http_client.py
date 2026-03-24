@@ -700,20 +700,16 @@ class HLTVClient:
                 else:
                     await nav_coro
             except asyncio.TimeoutError:
-                # Nav timeout — page didn't load but browser is alive.
-                # Update health timestamp so retry loop doesn't trigger
-                # false "unresponsive" restarts.
-                # Mild backoff on tab rate limiter only (not global) — prevents
-                # hammering the same proxy too fast after a timeout, but doesn't
-                # penalize other workers/tabs.
+                # Nav timeout — load event didn't fire but page may have
+                # content (common with Cloudflare interstitials).  Log a
+                # warning and fall through to readyState / selector checks.
+                logger.warning(
+                    "Navigation load-event timed out after %.0fs for %s "
+                    "— continuing to check page content",
+                    self._config.navigation_timeout, url,
+                )
                 self._last_eval_ok = time.monotonic()
                 tab_rl.backoff()
-                if self._proxy_health and self._proxy_url:
-                    self._proxy_health.record_failure(self._proxy_url)
-                raise HLTVFetchError(
-                    f"Navigation timed out after {self._config.navigation_timeout}s for {url}",
-                    url=url,
-                )
             finally:
                 tab.sleep = _orig_sleep
             _t_nav = time.monotonic()

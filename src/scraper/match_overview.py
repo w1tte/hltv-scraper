@@ -165,6 +165,16 @@ async def run_match_overview(
                     for v in result.vetoes
                 ]
 
+            # --- Reject live/incomplete matches (no score yet) ---
+            if result.team1_score is None or result.team2_score is None:
+                logger.warning(
+                    "Match %d has no score — likely still live or unfinished, re-queuing (%s%s)",
+                    match_id, config.base_url, entry["url"],
+                )
+                discovery_repo.mark_failed(match_id)
+                stats["failed"] += 1
+                continue
+
             # --- Validate before persist ---
             ctx = {"match_id": match_id}
             model_cls = ForfeitMatchModel if result.is_forfeit else MatchModel
