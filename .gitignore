@@ -4,6 +4,8 @@ data/
 __pycache__/
 *.pyc
 .pytest_cache/
+cron-ingest.log
+.cron-ingest.lock
 # Debug artifacts
 *.png
 debug_*.html

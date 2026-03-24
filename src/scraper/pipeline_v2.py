@@ -21,6 +21,7 @@ CLI usage:
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 from scraper.config import ScraperConfig
@@ -488,6 +489,7 @@ async def run_pipeline_v2(
     incremental: bool = True,
     force_rescrape: bool = False,
     skip_discovery: bool = False,
+    status_callback: Callable[[str, dict | None], None] | None = None,
 ) -> dict:
     """Run pipeline v2: discover all → parallel worker pool per match."""
     results = {
@@ -497,6 +499,14 @@ async def run_pipeline_v2(
         "perf_economy": {"parsed": 0, "failed": 0},
         "halted": False, "halt_reason": None,
     }
+
+    def emit_status(phase: str, **payload) -> None:
+        if status_callback is None:
+            return
+        try:
+            status_callback(phase, payload or None)
+        except Exception:
+            logger.debug("status_callback failed for phase %s", phase, exc_info=True)
 
     # Crash recovery: reset in-progress matches from previous interrupted run
     recovered = discovery_repo.recover_in_progress()
@@ -512,6 +522,12 @@ async def run_pipeline_v2(
     reset = discovery_repo.reset_failed_matches()
     if reset:
         logger.info("Reset %d failed matches to pending (attempts < 5)", reset)
+    emit_status(
+        "recovery",
+        recovered_in_progress=recovered,
+        recovered_orphaned_scraped=orphans,
+        reset_failed=reset,
+    )
 
     # ------------------------------------------------------------------ #
     # Phase 1: Discovery — completes fully before any match is processed
@@ -520,6 +536,7 @@ async def run_pipeline_v2(
         logger.info("=== Phase 1: Discovery (skipped — already done) ===")
     else:
         logger.info("=== Phase 1: Discovery ===")
+        emit_status("discovery")
         try:
             disc = await run_discovery(
                 clients[:1], discovery_repo, storage, config,
@@ -531,9 +548,15 @@ async def run_pipeline_v2(
                 "Starting worker pool (%d parallel browsers).",
                 disc.get("matches_found", 0), len(clients),
             )
+            emit_status(
+                "processing",
+                discovery=disc,
+                worker_count=len(clients),
+            )
         except Exception as exc:
             logger.error("Discovery failed: %s", exc)
             results.update(halted=True, halt_reason=f"Discovery failed: {exc}")
+            emit_status("failed", error=str(exc))
             return results
 
     if shutdown.is_set:
@@ -555,6 +578,12 @@ async def run_pipeline_v2(
     total = len(pending)
     logger.info("=== Phase 2: Processing %d matches with %d workers ===",
                 total, len(clients))
+    emit_status(
+        "processing",
+        pending=total,
+        queue_summary=qs,
+        worker_count=len(clients),
+    )
 
     client_queue: asyncio.Queue = asyncio.Queue()
     for c in clients:
@@ -683,6 +712,14 @@ async def run_pipeline_v2(
                 logger.info("[%d/%d] Match %d complete (%d maps)",
                             counters["done"] + counters["failed"], total,
                             entry["match_id"], r["maps_done"])
+                if (counters["done"] + counters["failed"]) % 10 == 0:
+                    emit_status(
+                        "processing",
+                        processed=counters["done"] + counters["failed"],
+                        completed=counters["done"],
+                        failed=counters["failed"],
+                        total=total,
+                    )
 
                 # Proactive proxy rotation every N matches
                 if (client_match_count[id(client)] % _PROXY_ROTATE_EVERY == 0
@@ -724,6 +761,14 @@ async def run_pipeline_v2(
                 logger.warning("[%d/%d] Match %d failed: %s",
                                counters["done"] + counters["failed"], total,
                                entry["match_id"], r["error"])
+                if (counters["done"] + counters["failed"]) % 10 == 0:
+                    emit_status(
+                        "processing",
+                        processed=counters["done"] + counters["failed"],
+                        completed=counters["done"],
+                        failed=counters["failed"],
+                        total=total,
+                    )
                 # Circuit breaker: rotate proxy after consecutive match failures
                 client_failures[id(client)] = client_failures.get(id(client), 0) + 1
                 if client_failures[id(client)] >= _FAILURE_RESTART_THRESHOLD:
@@ -808,6 +853,14 @@ async def run_pipeline_v2(
                     counters["failed"], total_processed,
                     100 * counters["failed"] / total_processed,
                 )
+                emit_status(
+                    "processing",
+                    processed=total_processed,
+                    completed=counters["done"],
+                    failed=counters["failed"],
+                    total=total,
+                    high_failure_rate=True,
+                )
     finally:
         watchdog_task.cancel()
         try:
@@ -817,4 +870,11 @@ async def run_pipeline_v2(
 
     logger.info("Worker pool done: %d ok, %d failed, %.0fs elapsed",
                 counters["done"], counters["failed"], time.monotonic() - t0)
+    emit_status(
+        "completed",
+        processed=counters["done"] + counters["failed"],
+        completed=counters["done"],
+        failed=counters["failed"],
+        total=total,
+    )
     return results

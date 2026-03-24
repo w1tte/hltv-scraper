@@ -16,8 +16,10 @@ Usage::
 import argparse
 import asyncio
 import logging
+import socket
 import shutil
 import time
+import uuid
 from pathlib import Path
 
 from scraper.config import ScraperConfig
@@ -28,6 +30,7 @@ from scraper.logging_config import setup_logging
 from scraper.pipeline import ShutdownHandler, run_pipeline
 from scraper.pipeline_v2 import run_pipeline_v2
 from scraper.repository import MatchRepository
+from scraper.run_state import RunStateRepository
 from scraper.storage import HtmlStorage
 
 logger = logging.getLogger(__name__)
@@ -297,11 +300,15 @@ async def async_main(args: argparse.Namespace) -> None:
     # 6. Repositories and storage
     match_repo = MatchRepository(db.conn)
     discovery_repo = DiscoveryRepository(db.conn)
+    run_state = RunStateRepository(db.conn)
     storage = HtmlStorage(config.data_dir)
 
     results = {}
     start_time = time.monotonic()
     clients_to_close: list = []
+    fatal_error: Exception | None = None
+    run_id = uuid.uuid4().hex
+    last_phase = "starting"
 
     try:
         # Load proxy list if provided
@@ -311,6 +318,32 @@ async def async_main(args: argparse.Namespace) -> None:
                 proxies = [line.strip() for line in f
                            if line.strip() and not line.strip().startswith("#")]
             logger.info("Loaded %d proxies from %s", len(proxies), args.proxy_file)
+
+        run_state.start_run(
+            run_id=run_id,
+            status="running",
+            phase="starting",
+            hostname=socket.gethostname(),
+            pipeline=args.pipeline,
+            workers=args.workers if use_v2 else total_workers,
+            concurrent_tabs=config.concurrent_tabs,
+            proxy_count=len(proxies),
+            source="cli",
+            metadata={
+                "argv": vars(args),
+                "log_file": str(log_file),
+                "mode": mode,
+            },
+        )
+
+        def mark_phase(phase: str, metadata: dict | None = None) -> None:
+            nonlocal last_phase
+            last_phase = phase
+            run_state.heartbeat(
+                run_id,
+                phase=phase,
+                metadata=metadata,
+            )
 
         async def create_pool(count, label, proxy_offset):
             """Create a pool of HLTVClient instances with staggered startup."""
@@ -331,6 +364,7 @@ async def async_main(args: argparse.Namespace) -> None:
             return pool
 
         if use_v2:
+            mark_phase("warming_browsers", {"worker_target": args.workers})
             # v2: flat pool — each browser owns one match end-to-end.
             # Overlap discovery with browser warmup: start browser 1 first,
             # then run discovery + warm up remaining browsers in parallel.
@@ -413,9 +447,10 @@ async def async_main(args: argparse.Namespace) -> None:
 
             if args.skip_discovery:
                 logger.info("Skipping discovery (--skip-discovery)")
+                mark_phase("discovery_skipped")
             else:
+                mark_phase("discovery")
                 from scraper.discovery import run_discovery
-                from scraper.pipeline import ShutdownHandler as _SH
                 disc_result = await run_discovery(
                     [first_client], discovery_repo, storage, config,
                     incremental=not args.full, shutdown=shutdown,
@@ -424,6 +459,7 @@ async def async_main(args: argparse.Namespace) -> None:
                     "Discovery complete — %d matches found",
                     disc_result.get("matches_found", 0),
                 )
+                mark_phase("processing", {"discovery": disc_result})
 
             # Wait for remaining browsers to finish warming up
             remaining = await warmup_task
@@ -444,8 +480,10 @@ async def async_main(args: argparse.Namespace) -> None:
                 incremental=not args.full,
                 force_rescrape=args.force_rescrape,
                 skip_discovery=True,
+                status_callback=mark_phase,
             )
         else:
+            mark_phase("warming_browsers", {"worker_target": total_workers})
             # v1: three separate pools per stage
             overview_pool = await create_pool(
                 args.overview_workers, "overview", 0,
@@ -481,6 +519,11 @@ async def async_main(args: argparse.Namespace) -> None:
                 incremental=not args.full,
                 force_rescrape=args.force_rescrape,
             )
+            mark_phase("completed", {"results": results})
+    except Exception as exc:
+        fatal_error = exc
+        logger.exception("hltv-ingest run failed")
+        raise
     finally:
         for c in clients_to_close:
             await c.close()
@@ -490,6 +533,35 @@ async def async_main(args: argparse.Namespace) -> None:
 
         # Print to console and log file
         logger.info("\n%s", summary_text)
+
+        summary_payload = {
+            "wall_time_seconds": round(wall_time, 2),
+            "log_file": str(log_file),
+            "results": results,
+        }
+        if fatal_error is not None:
+            run_state.finish_run(
+                run_id,
+                status="failed",
+                phase="failed",
+                summary=summary_payload,
+                error_message=str(fatal_error),
+            )
+        elif results.get("halted"):
+            run_state.finish_run(
+                run_id,
+                status="halted",
+                phase="halted",
+                summary=summary_payload,
+                error_message=results.get("halt_reason"),
+            )
+        else:
+            run_state.finish_run(
+                run_id,
+                status="completed",
+                phase=last_phase if last_phase != "starting" else "completed",
+                summary=summary_payload,
+            )
 
         db.close()
         shutdown.restore()

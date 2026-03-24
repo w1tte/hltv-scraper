@@ -115,7 +115,7 @@ class DiscoveryRepository:
             existing = cur.fetchone()[0]
         return len(match_ids) - existing
 
-    def reset_failed_matches(self, max_attempts: int = 5) -> int:
+    def reset_failed_matches(self, max_attempts: int = 10) -> int:
         """Auto-reset failed matches that haven't exhausted their retries.
 
         Only resets matches with fewer than *max_attempts* attempts.
@@ -130,7 +130,7 @@ class DiscoveryRepository:
                 )
                 return cur.rowcount
 
-    def mark_failed(self, match_id: int, max_attempts: int = 5) -> None:
+    def mark_failed(self, match_id: int, max_attempts: int = 10) -> None:
         """Increment attempt counter and set appropriate failure status.
 
         - attempts < max_attempts  → 'failed'  (eligible for auto-retry)
@@ -216,4 +216,24 @@ class DiscoveryRepository:
         with self.conn:
             with self.conn.cursor() as cur:
                 cur.execute(RESET_IN_PROGRESS)
+                return cur.rowcount
+
+    def recover_orphaned_scraped(self) -> int:
+        """Reset 'scraped' queue entries that have no match row back to 'pending'.
+
+        This catches the case where the process crashed between
+        persist_complete_match and update_status, or where persist
+        rolled back but status was already committed.
+
+        Returns the number of recovered matches.
+        """
+        with self.conn:
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE scrape_queue SET status = 'pending', attempts = 0 "
+                    "WHERE status = 'scraped' "
+                    "AND NOT EXISTS ("
+                    "  SELECT 1 FROM matches m WHERE m.match_id = scrape_queue.match_id"
+                    ")"
+                )
                 return cur.rowcount

@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS matches (
     updated_at    TEXT NOT NULL,
     source_url    TEXT,
     parser_version TEXT,
-    date_unix_ms  BIGINT
+    date_unix_ms  BIGINT,
+    exclude_analysis BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE IF NOT EXISTS maps (
@@ -213,6 +214,26 @@ CREATE TABLE IF NOT EXISTS scraper_logs (
     message     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_scraper_logs_ts ON scraper_logs(ts DESC);
+
+CREATE TABLE IF NOT EXISTS ingest_runs (
+    run_id             TEXT PRIMARY KEY,
+    service_name       TEXT NOT NULL DEFAULT 'hltv-ingest',
+    started_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at        TIMESTAMPTZ,
+    last_heartbeat_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    status             TEXT NOT NULL,
+    phase              TEXT NOT NULL,
+    hostname           TEXT,
+    pipeline           TEXT,
+    workers            INTEGER,
+    concurrent_tabs    INTEGER,
+    proxy_count        INTEGER NOT NULL DEFAULT 0,
+    source             TEXT,
+    summary            JSONB NOT NULL DEFAULT '{}'::jsonb,
+    error_message      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ingest_runs_started_at ON ingest_runs(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ingest_runs_status ON ingest_runs(status);
 """
 
 
