@@ -15,7 +15,7 @@ Benefits:
   - Predictable: a match is either untouched or fully scraped.
 
 CLI usage:
-  hltv-scraper --pipeline v2 --workers 4 --end-offset 100 --clean
+  hltv-ingest --pipeline v2 --workers 4 --end-offset 100 --clean
 """
 
 import asyncio
@@ -168,6 +168,7 @@ async def _scrape_match(
     # ------------------------------------------------------------------ #
     if parsed.is_forfeit:
         # Forfeits have no map data — persist overview only
+        match_data["exclude_analysis"] = True
         match_repo.persist_complete_match(
             match_data=match_data, maps_data=maps_data,
             vetoes_data=vetoes_data, all_stats=[], all_rounds=[],
@@ -178,6 +179,7 @@ async def _scrape_match(
 
     playable = [m for m in parsed.maps if m.mapstatsid]
     if not playable:
+        match_data["exclude_analysis"] = True
         match_repo.persist_complete_match(
             match_data=match_data, maps_data=maps_data,
             vetoes_data=vetoes_data, all_stats=[], all_rounds=[],
@@ -446,6 +448,15 @@ async def _scrape_match(
         all_economy.extend(r["economy"])
         all_kill_matrix.extend(r["kill_matrix"])
 
+    # Auto-detect matches unsuitable for analysis:
+    # - any map with >10 player_stats rows (substitutes played)
+    from collections import Counter
+    stats_per_map = Counter(
+        (s["match_id"], s["map_number"]) for s in all_stats
+    )
+    has_subs = any(cnt > 10 for cnt in stats_per_map.values())
+    match_data["exclude_analysis"] = has_subs
+
     match_repo.persist_complete_match(
         match_data=match_data,
         maps_data=maps_data,
@@ -491,6 +502,11 @@ async def run_pipeline_v2(
     recovered = discovery_repo.recover_in_progress()
     if recovered:
         logger.info("Recovered %d in-flight matches from previous crash → pending", recovered)
+
+    # Integrity fix: reset 'scraped' entries with no match row (crash between persist and status update)
+    orphans = discovery_repo.recover_orphaned_scraped()
+    if orphans:
+        logger.info("Recovered %d orphaned 'scraped' entries (no match data) → pending", orphans)
 
     # Auto-reset failed matches that haven't exhausted retries (< 5 attempts)
     reset = discovery_repo.reset_failed_matches()

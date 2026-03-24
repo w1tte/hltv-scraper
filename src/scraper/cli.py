@@ -1,16 +1,16 @@
-"""CLI entry point for the HLTV scraper.
+"""CLI entry point for the HLTV historical ingest service.
 
-Provides ``main()`` as the sync entry point for the ``hltv-scraper``
+Provides ``main()`` as the sync entry point for the ``hltv-ingest``
 console script, and ``async_main(args)`` which sets up logging,
 initializes all components, runs the pipeline, and prints an
 end-of-run summary.
 
 Usage::
 
-    hltv-scraper                     # incremental scrape, offsets 0-9900
-    hltv-scraper --end-offset 300    # small test run
-    hltv-scraper --full              # full re-discovery (no early stop)
-    hltv-scraper --force-rescrape    # re-process completed matches
+    hltv-ingest                     # incremental historical ingest
+    hltv-ingest --end-offset 300    # small test run
+    hltv-ingest --full              # full re-discovery (no early stop)
+    hltv-ingest --force-rescrape    # re-process completed matches
 """
 
 import argparse
@@ -34,10 +34,10 @@ logger = logging.getLogger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the argument parser for the hltv-scraper CLI."""
+    """Build the argument parser for the hltv-ingest CLI."""
     parser = argparse.ArgumentParser(
-        prog="hltv-scraper",
-        description="Scrape CS2 match data from HLTV.org",
+        prog="hltv-ingest",
+        description="Ingest historical CS2 match data from HLTV.org",
     )
     parser.add_argument(
         "--start-offset",
@@ -257,14 +257,14 @@ async def async_main(args: argparse.Namespace) -> None:
     total_workers = args.workers if use_v2 else (args.overview_workers + args.map_workers + args.perf_workers)
     if use_v2:
         logger.info(
-            "Starting hltv-scraper v2: offsets %d-%d, mode=%s, data_dir=%s, "
+            "Starting hltv-ingest v2: offsets %d-%d, mode=%s, data_dir=%s, "
             "workers=%d, tabs=%d, page_wait=%.1fs, min_delay=%.1fs, log=%s",
             args.start_offset, args.end_offset, mode, args.data_dir,
             args.workers, config.concurrent_tabs, config.page_load_wait, config.min_delay, log_file,
         )
     else:
         logger.info(
-            "Starting hltv-scraper: offsets %d-%d, mode=%s, data_dir=%s, "
+            "Starting hltv-ingest: offsets %d-%d, mode=%s, data_dir=%s, "
             "workers=%d+%d+%d, tabs=%d, page_wait=%.1fs, min_delay=%.1fs, log=%s",
             args.start_offset, args.end_offset, mode, args.data_dir,
             args.overview_workers, args.map_workers, args.perf_workers,
@@ -497,7 +497,7 @@ async def async_main(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    """Sync entry point for the hltv-scraper console script."""
+    """Sync entry point for the hltv-ingest console script."""
     import sys
 
     # Suppress nodriver's unclosed transport errors on Windows shutdown.

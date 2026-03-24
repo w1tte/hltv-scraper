@@ -1,3 +1,5 @@
+name: hltv-ingest
+
 services:
   postgres:
     image: postgres:17
@@ -17,11 +19,11 @@ services:
       timeout: 3s
       retries: 5
 
-  scraper:
+  ingest:
     build: .
-    container_name: hltv-scraper
+    container_name: hltv-ingest
     restart: "no"
-    profiles: ["scraper"]
+    profiles: ["ingest"]
     pids_limit: 700
     depends_on:
       postgres:
@@ -35,7 +37,9 @@ services:
     volumes:
       - ./data:/app/data
       - ./proxies.txt:/app/proxies.txt:ro
-    command: ["sh", "-c", "Xvfb :99 -screen 0 1280x900x24 -nolisten tcp & sleep 1 && exec hltv-scraper --proxy-file proxies.txt --workers 2 --concurrent-tabs 1 --no-save-html --skip-discovery --fast-recovery --memory-limit 1500"]
+    command: ["sh", "-c", "Xvfb :99 -screen 0 1280x900x24 -nolisten tcp & sleep 1 && exec hltv-ingest --proxy-file proxies.txt --workers 2 --concurrent-tabs 1 --no-save-html --fast-recovery --memory-limit 1500 --nav-timeout 45"]
 
 volumes:
   hltv_pgdata:
+    external: true
+    name: hltv-scraper_hltv_pgdata

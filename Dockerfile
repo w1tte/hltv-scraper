@@ -26,5 +26,5 @@ VOLUME /app/data
 # tini as PID 1 reaps zombie Chrome processes
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
-# Start Xvfb then run the scraper
-CMD ["sh", "-c", "Xvfb :99 -screen 0 1280x900x24 -nolisten tcp & sleep 1 && exec hltv-scraper"]
+# Start Xvfb then run the ingest CLI
+CMD ["sh", "-c", "Xvfb :99 -screen 0 1280x900x24 -nolisten tcp & sleep 1 && exec hltv-ingest"]
