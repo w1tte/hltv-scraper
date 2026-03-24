@@ -56,7 +56,7 @@ class TestBackoff:
 
     def test_backoff_increases_delay(self):
         """After backoff(), current_delay doubles (with default factor 2.0)."""
-        limiter = _make_limiter(min_delay=3.0, backoff_factor=2.0)
+        limiter = _make_limiter(min_delay=3.0, backoff_factor=2.0, max_backoff=10.0)
         initial = limiter.current_delay
         limiter.backoff()
         assert limiter.current_delay == initial * 2.0
@@ -77,7 +77,12 @@ class TestRecover:
 
     def test_recover_decreases_delay(self):
         """After recover(), current_delay decreases."""
-        limiter = _make_limiter(min_delay=3.0, recovery_factor=0.95)
+        limiter = _make_limiter(
+            min_delay=3.0,
+            max_delay=10.0,
+            max_backoff=10.0,
+            recovery_factor=0.95,
+        )
         # First increase the delay so there's room to recover
         limiter.backoff()
         elevated = limiter.current_delay
@@ -160,7 +165,7 @@ class TestReset:
 
     def test_reset_returns_to_min(self):
         """reset() sets current_delay to min_delay."""
-        limiter = _make_limiter(min_delay=3.0)
+        limiter = _make_limiter(min_delay=3.0, max_backoff=20.0)
         # Increase delay first
         limiter.backoff()
         limiter.backoff()

@@ -36,7 +36,7 @@ class ScraperConfig:
     # Seconds to wait after navigation for page to load (fallback retries).
     # Ready-selector polling is the real gate; this is only used for
     # content-marker misses and short-extraction retries.
-    page_load_wait: float = 0.4
+    page_load_wait: float = 0.25
 
     # Save raw HTML to disk for debugging/resumability.
     # Set to False for large production runs to avoid 250k+ gzip files and
@@ -52,10 +52,10 @@ class ScraperConfig:
     navigation_timeout: float = 25.0
 
     # CDP evaluate timeout (asyncio.wait_for around tab.evaluate())
-    evaluate_timeout: float = 8.0
+    evaluate_timeout: float = 12.0
 
     # Hard ceiling per match — defense-in-depth (4 minutes)
-    per_match_timeout: float = 240.0
+    per_match_timeout: float = 360.0
 
     # Watchdog: restart workers stuck longer than this (seconds)
     watchdog_timeout: float = 600.0
@@ -65,7 +65,7 @@ class ScraperConfig:
     memory_check_interval: int = 25     # Check memory every N matches per worker
 
     # Seconds to poll for Cloudflare challenge to clear during fetches
-    challenge_wait: float = 30.0
+    challenge_wait: float = 60.0
 
     # HLTV base URL (single-site scraper)
     base_url: str = HLTV_BASE_URL

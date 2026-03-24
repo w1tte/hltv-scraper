@@ -9,5 +9,6 @@ cron-ingest.log
 # Debug artifacts
 *.png
 debug_*.html
+*.bak
 proxies.txt
 start_proxies.sh
